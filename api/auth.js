@@ -1,5 +1,5 @@
 // pages/api/auth.js
-import { db } from '@/utils/firebase';
+import { db } from "../../utils/firebase.js";
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
