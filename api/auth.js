@@ -1,6 +1,6 @@
 // api/auth.js
 import { db } from "../utils/firebase.js";
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 
 // Helper function to generate unique user_id starting with tk01
