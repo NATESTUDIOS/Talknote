@@ -9,28 +9,18 @@
       "src": "^/api/(.*)$",
       "dest": "/api/$1.js",
       "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/notes/:noteId",
-      "destination": "/public/note.html"
     },
     {
-      "source": "/",
-      "destination": "/public/index.html"
+      "src": "^/notes/([^/]+)/?$",
+      "dest": "/public/note.html"
     },
     {
-      "source": "/index.html",
-      "destination": "/public/index.html"
+      "src": "^/$",
+      "dest": "/public/index.html"
     },
     {
-      "source": "/note.html",
-      "destination": "/public/note.html"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/public/$1"
+      "src": "^/(.*)$",
+      "dest": "/public/$1"
     }
   ]
 }
