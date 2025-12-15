@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talknote – Loading Note...</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #000, #1a1a1a, #000);
+            padding: 18px;
+            color: #f5f5f5;
+        }
+
+        .glass-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 18px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .logo {
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            cursor: pointer;
+        }
+
+        .icons {
+            display: flex;
+            gap: 16px;
+        }
+
+        .icons i {
+            font-size: 17px;
+            opacity: 0.9;
+            cursor: pointer;
+        }
+
+        .icons i:hover { opacity: 0.65 }
+
+        .notebox {
+            margin-top: 22px;
+            padding: 22px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(12px);
+        }
+
+        .note-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            opacity: 0.8;
+            margin-bottom: 14px;
+        }
+
+        .note-meta i {
+            font-size: 12px;
+        }
+
+        .notebox h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 18px;
+            line-height: 1.3;
+        }
+
+        .notebox p {
+            font-size: 15px;
+            line-height: 1.75;
+            white-space: pre-line;
+            opacity: 0.95;
+        }
+
+        .inputbox {
+            margin-top: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .inputbox input {
+            flex: 1;
+            padding: 14px 18px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            outline: none;
+        }
+
+        .inputbox input::placeholder {
+            color: #ccc;
+        }
+
+        .sendbutton {
+            height: 48px;
+            width: 48px;
+            border-radius: 50%;
+            background: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .sendbutton i {
+            color: #000;
+            font-size: 15px;
+        }
+
+        .bottombox {
+            margin-top: 14px;
+            font-size: 11px;
+            opacity: 0.6;
+            text-align: center;
+            font-family: monospace;
+        }
+
+        .error-container {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .error-container h2 {
+            margin-bottom: 10px;
+        }
+
+        .error-container p {
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            opacity: 0.8;
+        }
+
+        .share-section {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .share-button {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .share-button:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .copy-message {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header class="glass-header">
+        <div class="logo" onclick="window.location.href='/'">Talknote</div>
+        <div class="icons">
+            <i class="fa-solid fa-house" onclick="window.location.href='/'"></i>
+            <i class="fa-solid fa-bookmark"></i>
+            <i class="fa-solid fa-user"></i>
+        </div>
+    </header>
+
+    <section class="notebox" id="noteContainer">
+        <!-- Content will be loaded here dynamically -->
+        <div class="loading">
+            <p>Loading note...</p>
+        </div>
+    </section>
+
+    <div class="bottombox">
+        Powered by Talknote © 2025
+    </div>
+
+    <script>
+        // Get note ID from URL path
+        function getNoteIdFromPath() {
+            const path = window.location.pathname;
+            const parts = path.split('/');
+            const noteId = parts[2]; // /notes/[note_id]
+            
+            // Clean up any query parameters
+            return noteId ? noteId.split('?')[0] : null;
+        }
+
+        async function loadNote() {
+            const noteId = getNoteIdFromPath();
+            const noteContainer = document.getElementById('noteContainer');
+            
+            if (!noteId) {
+                showError('No note ID found in URL');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/notes?note_id=${noteId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayNote(data.note);
+                } else {
+                    showError(data.error || 'This note is not accessible');
+                }
+            } catch (error) {
+                console.error('Error loading note:', error);
+                showError('Failed to load note. Please try again.');
+            }
+        }
+
+        function displayNote(note) {
+            const noteContainer = document.getElementById('noteContainer');
+            const date = new Date(note.created_at);
+            const formattedDate = date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            noteContainer.innerHTML = `
+                <div class="note-meta">
+                    <i class="fa-solid fa-note-sticky"></i>
+                    <span>Shared ${note.public ? 'Public' : 'Private'} note • ${formattedDate}</span>
+                </div>
+
+                <h1>${escapeHtml(note.title)}</h1>
+
+                <p>${escapeHtml(note.text)}</p>
+
+                <div class="share-section">
+                    <button class="share-button" onclick="shareNote()">
+                        <i class="fa-solid fa-share"></i>
+                        Share Note
+                    </button>
+                    <button class="share-button" onclick="copyNoteLink()">
+                        <i class="fa-solid fa-copy"></i>
+                        Copy Link
+                    </button>
+                    <span id="copyMessage" class="copy-message"></span>
+                </div>
+            `;
+
+            // Update page title
+            document.title = `Talknote – ${escapeHtml(note.title)}`;
+        }
+
+        function showError(message) {
+            const noteContainer = document.getElementById('noteContainer');
+            noteContainer.innerHTML = `
+                <div class="error-container">
+                    <h2>Note Not Accessible</h2>
+                    <p>${message}</p>
+                    <p>This note might be private or doesn't exist.</p>
+                    <br>
+                    <button class="share-button" onclick="window.location.href='/'">
+                        <i class="fa-solid fa-arrow-left"></i>
+                        Back to Home
+                    </button>
+                </div>
+            `;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function shareNote() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Talknote - Shared Note',
+                    text: 'Check out this note on Talknote',
+                    url: window.location.href
+                });
+            } else {
+                copyNoteLink();
+            }
+        }
+
+        function copyNoteLink() {
+            const currentUrl = window.location.href;
+            navigator.clipboard.writeText(currentUrl).then(() => {
+                const message = document.getElementById('copyMessage');
+                message.textContent = 'Link copied!';
+                setTimeout(() => {
+                    message.textContent = '';
+                }, 3000);
+            });
+        }
+
+        // Load note when page loads
+        document.addEventListener('DOMContentLoaded', loadNote);
+    </script>
+</body>
+</html>
