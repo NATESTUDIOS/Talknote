@@ -16,8 +16,13 @@
         body {
             min-height: 100vh;
             background: linear-gradient(135deg, #000, #1a1a1a, #000);
-            padding: 18px;
             color: #f5f5f5;
+        }
+
+        .container {
+            padding: 18px;
+            max-width: 800px;
+            margin: 0 auto;
         }
 
         .glass-header {
@@ -57,6 +62,7 @@
             background: rgba(255, 255, 255, 0.06);
             border: 1px solid rgba(255, 255, 255, 0.12);
             backdrop-filter: blur(12px);
+            min-height: 300px;
         }
 
         .note-meta {
@@ -84,43 +90,6 @@
             line-height: 1.75;
             white-space: pre-line;
             opacity: 0.95;
-        }
-
-        .inputbox {
-            margin-top: 18px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .inputbox input {
-            flex: 1;
-            padding: 14px 18px;
-            border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            background: rgba(255, 255, 255, 0.08);
-            color: #fff;
-            outline: none;
-        }
-
-        .inputbox input::placeholder {
-            color: #ccc;
-        }
-
-        .sendbutton {
-            height: 48px;
-            width: 48px;
-            border-radius: 50%;
-            background: #ffffff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-        }
-
-        .sendbutton i {
-            color: #000;
-            font-size: 15px;
         }
 
         .bottombox {
@@ -156,6 +125,7 @@
             display: flex;
             gap: 10px;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         .share-button {
@@ -169,6 +139,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            border: none;
         }
 
         .share-button:hover {
@@ -180,51 +151,89 @@
             opacity: 0.7;
             margin-left: 10px;
         }
+
+        .back-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .back-button:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
     </style>
 </head>
 <body>
-    <header class="glass-header">
-        <div class="logo" onclick="window.location.href='/'">Talknote</div>
-        <div class="icons">
-            <i class="fa-solid fa-house" onclick="window.location.href='/'"></i>
-            <i class="fa-solid fa-bookmark"></i>
-            <i class="fa-solid fa-user"></i>
-        </div>
-    </header>
+    <div class="container">
+        <header class="glass-header">
+            <div class="logo" onclick="window.location.href='/'">Talknote</div>
+            <div class="icons">
+                <i class="fa-solid fa-house" onclick="window.location.href='/'"></i>
+                <i class="fa-solid fa-share-alt" onclick="shareNote()"></i>
+            </div>
+        </header>
 
-    <section class="notebox" id="noteContainer">
-        <!-- Content will be loaded here dynamically -->
-        <div class="loading">
-            <p>Loading note...</p>
-        </div>
-    </section>
+        <section class="notebox" id="noteContainer">
+            <div class="loading">
+                <p>Loading note...</p>
+            </div>
+        </section>
 
-    <div class="bottombox">
-        Powered by Talknote © 2025
+        <div class="bottombox">
+            Powered by Talknote © 2025
+        </div>
     </div>
 
     <script>
-        // Get note ID from URL path
-        function getNoteIdFromPath() {
+        // Get note ID from URL
+        function getNoteIdFromUrl() {
+            // Get the pathname from URL
             const path = window.location.pathname;
-            const parts = path.split('/');
-            const noteId = parts[2]; // /notes/[note_id]
             
-            // Clean up any query parameters
-            return noteId ? noteId.split('?')[0] : null;
+            // Remove leading/trailing slashes and split
+            const parts = path.replace(/^\/|\/$/g, '').split('/');
+            
+            // If we're at /notes/:id, get the id
+            if (parts[0] === 'notes' && parts[1]) {
+                return parts[1];
+            }
+            
+            // Alternative: Direct match from path
+            const match = path.match(/\/notes\/([^\/]+)/);
+            return match ? match[1] : null;
+        }
+
+        // Make API URL dynamic
+        function getApiBaseUrl() {
+            // Use relative path for same domain
+            return '/api';
         }
 
         async function loadNote() {
-            const noteId = getNoteIdFromPath();
+            const noteId = getNoteIdFromUrl();
             const noteContainer = document.getElementById('noteContainer');
             
             if (!noteId) {
-                showError('No note ID found in URL');
+                showError('Invalid note URL');
                 return;
             }
 
             try {
-                const response = await fetch(`/api/notes?note_id=${noteId}`);
+                const apiUrl = `${getApiBaseUrl()}/notes?note_id=${encodeURIComponent(noteId)}`;
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
                 const data = await response.json();
                 
                 if (data.success) {
@@ -251,18 +260,18 @@
 
             noteContainer.innerHTML = `
                 <div class="note-meta">
-                    <i class="fa-solid fa-note-sticky"></i>
-                    <span>Shared ${note.public ? 'Public' : 'Private'} note • ${formattedDate}</span>
+                    <i class="fa-solid fa-${note.public ? 'globe' : 'lock'}"></i>
+                    <span>${note.public ? 'Public' : 'Private'} note • Created ${formattedDate}</span>
                 </div>
 
-                <h1>${escapeHtml(note.title)}</h1>
+                <h1>${escapeHtml(note.title || 'Untitled Note')}</h1>
 
-                <p>${escapeHtml(note.text)}</p>
+                <p>${escapeHtml(note.text || 'No content')}</p>
 
                 <div class="share-section">
                     <button class="share-button" onclick="shareNote()">
                         <i class="fa-solid fa-share"></i>
-                        Share Note
+                        Share
                     </button>
                     <button class="share-button" onclick="copyNoteLink()">
                         <i class="fa-solid fa-copy"></i>
@@ -270,10 +279,15 @@
                     </button>
                     <span id="copyMessage" class="copy-message"></span>
                 </div>
+                
+                <a href="/" class="back-button">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    Back to Home
+                </a>
             `;
 
             // Update page title
-            document.title = `Talknote – ${escapeHtml(note.title)}`;
+            document.title = `Talknote – ${escapeHtml(note.title || 'Shared Note')}`;
         }
 
         function showError(message) {
@@ -284,26 +298,32 @@
                     <p>${message}</p>
                     <p>This note might be private or doesn't exist.</p>
                     <br>
-                    <button class="share-button" onclick="window.location.href='/'">
+                    <a href="/" class="back-button">
                         <i class="fa-solid fa-arrow-left"></i>
                         Back to Home
-                    </button>
+                    </a>
                 </div>
             `;
         }
 
         function escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
 
         function shareNote() {
+            const noteId = getNoteIdFromUrl();
+            if (!noteId) return;
+            
+            const shareUrl = window.location.href;
+            
             if (navigator.share) {
                 navigator.share({
                     title: 'Talknote - Shared Note',
                     text: 'Check out this note on Talknote',
-                    url: window.location.href
+                    url: shareUrl
                 });
             } else {
                 copyNoteLink();
@@ -314,15 +334,20 @@
             const currentUrl = window.location.href;
             navigator.clipboard.writeText(currentUrl).then(() => {
                 const message = document.getElementById('copyMessage');
-                message.textContent = 'Link copied!';
-                setTimeout(() => {
-                    message.textContent = '';
-                }, 3000);
+                if (message) {
+                    message.textContent = 'Link copied!';
+                    setTimeout(() => {
+                        message.textContent = '';
+                    }, 3000);
+                }
             });
         }
 
         // Load note when page loads
         document.addEventListener('DOMContentLoaded', loadNote);
+        
+        // Also handle browser back/forward
+        window.addEventListener('popstate', loadNote);
     </script>
 </body>
 </html>
