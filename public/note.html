@@ -92,6 +92,148 @@
             opacity: 0.95;
         }
 
+        .comments-section {
+            margin-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 20px;
+        }
+
+        .comments-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .comments-header h2 {
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .comment-count {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        .comment-form {
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 15px;
+        }
+
+        .comment-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .comment-name-input {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            outline: none;
+        }
+
+        .comment-name-input::placeholder {
+            color: #aaa;
+        }
+
+        .comment-input {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            outline: none;
+            resize: vertical;
+            min-height: 60px;
+            font-family: inherit;
+        }
+
+        .comment-input::placeholder {
+            color: #aaa;
+        }
+
+        .comment-submit {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: none;
+        }
+
+        .comment-submit:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .comment-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .comments-list {
+            margin-top: 20px;
+        }
+
+        .comment-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+        }
+
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .comment-author {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .comment-time {
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        .comment-text {
+            font-size: 14px;
+            line-height: 1.5;
+            opacity: 0.9;
+        }
+
+        .no-comments {
+            text-align: center;
+            padding: 30px;
+            opacity: 0.6;
+            font-style: italic;
+        }
+
+        .loading-comments {
+            text-align: center;
+            padding: 20px;
+            opacity: 0.8;
+        }
+
         .bottombox {
             margin-top: 14px;
             font-size: 11px;
@@ -187,47 +329,40 @@
             </div>
         </section>
 
+        <div class="comments-section" id="commentsSection" style="display: none;">
+            <!-- Comments will be loaded here -->
+        </div>
+
         <div class="bottombox">
             Powered by Talknote © 2025
         </div>
     </div>
 
     <script>
+        let currentNoteId = null;
+        let commentName = localStorage.getItem('talknote_comment_name') || '';
+
         // Get note ID from URL
         function getNoteIdFromUrl() {
-            // Get the pathname from URL
             const path = window.location.pathname;
-            
-            // Remove leading/trailing slashes and split
-            const parts = path.replace(/^\/|\/$/g, '').split('/');
-            
-            // If we're at /notes/:id, get the id
-            if (parts[0] === 'notes' && parts[1]) {
-                return parts[1];
-            }
-            
-            // Alternative: Direct match from path
             const match = path.match(/\/notes\/([^\/]+)/);
             return match ? match[1] : null;
         }
 
-        // Make API URL dynamic
-        function getApiBaseUrl() {
-            // Use relative path for same domain
-            return '/api';
-        }
-
+        // Load note with comments
         async function loadNote() {
-            const noteId = getNoteIdFromUrl();
+            currentNoteId = getNoteIdFromUrl();
             const noteContainer = document.getElementById('noteContainer');
+            const commentsSection = document.getElementById('commentsSection');
             
-            if (!noteId) {
+            if (!currentNoteId) {
                 showError('Invalid note URL');
                 return;
             }
 
             try {
-                const apiUrl = `${getApiBaseUrl()}/notes?note_id=${encodeURIComponent(noteId)}`;
+                // Load note with comments
+                const apiUrl = `/api/notes?note_id=${encodeURIComponent(currentNoteId)}&with_comments=true`;
                 const response = await fetch(apiUrl);
                 
                 if (!response.ok) {
@@ -238,6 +373,9 @@
                 
                 if (data.success) {
                     displayNote(data.note);
+                    if (data.note.public) {
+                        displayComments(data.note.comments || []);
+                    }
                 } else {
                     showError(data.error || 'This note is not accessible');
                 }
@@ -261,7 +399,7 @@
             noteContainer.innerHTML = `
                 <div class="note-meta">
                     <i class="fa-solid fa-${note.public ? 'globe' : 'lock'}"></i>
-                    <span>${note.public ? 'Public' : 'Private'} note • Created ${formattedDate}</span>
+                    <span>${note.public ? 'Public' : 'Private'} note • Created ${formattedDate} • ${note.comment_count || 0} comment${note.comment_count !== 1 ? 's' : ''}</span>
                 </div>
 
                 <h1>${escapeHtml(note.title || 'Untitled Note')}</h1>
@@ -288,6 +426,154 @@
 
             // Update page title
             document.title = `Talknote – ${escapeHtml(note.title || 'Shared Note')}`;
+
+            // Show comments section if note is public
+            if (note.public) {
+                document.getElementById('commentsSection').style.display = 'block';
+            }
+        }
+
+        function displayComments(comments) {
+            const commentsSection = document.getElementById('commentsSection');
+            
+            commentsSection.innerHTML = `
+                <div class="comments-header">
+                    <h2><i class="fa-solid fa-comments"></i> Comments <span class="comment-count">${comments.length}</span></h2>
+                </div>
+                
+                <div class="comment-form">
+                    <div class="comment-input-group">
+                        <input type="text" 
+                               class="comment-name-input" 
+                               id="commentNameInput"
+                               placeholder="Your name (optional)" 
+                               value="${escapeHtml(commentName)}"
+                               onchange="saveCommentName(this.value)">
+                    </div>
+                    <textarea class="comment-input" 
+                              id="commentInput" 
+                              placeholder="Add a comment..."></textarea>
+                    <button class="comment-submit" onclick="submitComment()" id="submitCommentBtn">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        Post Comment
+                    </button>
+                </div>
+                
+                <div class="comments-list" id="commentsList">
+                    ${comments.length > 0 ? 
+                        comments.map(comment => renderComment(comment)).join('') : 
+                        '<div class="no-comments">No comments yet. Be the first to comment!</div>'
+                    }
+                </div>
+            `;
+        }
+
+        function renderComment(comment) {
+            const date = new Date(comment.created_at);
+            const formattedDate = date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            return `
+                <div class="comment-item">
+                    <div class="comment-header">
+                        <div class="comment-author">${escapeHtml(comment.name || 'Anonymous')}</div>
+                        <div class="comment-time">${formattedDate}</div>
+                    </div>
+                    <div class="comment-text">${escapeHtml(comment.text)}</div>
+                </div>
+            `;
+        }
+
+        function saveCommentName(name) {
+            commentName = name;
+            localStorage.setItem('talknote_comment_name', name);
+        }
+
+        async function submitComment() {
+            const commentInput = document.getElementById('commentInput');
+            const commentNameInput = document.getElementById('commentNameInput');
+            const submitBtn = document.getElementById('submitCommentBtn');
+            
+            const text = commentInput.value.trim();
+            const name = commentNameInput.value.trim() || 'Anonymous';
+            
+            if (!text) {
+                alert('Please enter a comment');
+                return;
+            }
+
+            // Disable button during submission
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Posting...';
+
+            try {
+                const response = await fetch('/api/notes?action=add_comment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        note_id: currentNoteId,
+                        name: name,
+                        text: text
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Clear input
+                    commentInput.value = '';
+                    
+                    // Save name for future
+                    saveCommentName(name);
+                    
+                    // Reload comments
+                    await loadComments();
+                    
+                    // Show success message
+                    showMessage('Comment posted successfully!');
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error posting comment:', error);
+                alert('Failed to post comment. Please try again.');
+            } finally {
+                // Re-enable button
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Post Comment';
+            }
+        }
+
+        async function loadComments() {
+            try {
+                const response = await fetch(`/api/notes?action=get_comments&note_id=${currentNoteId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const commentsList = document.getElementById('commentsList');
+                    const commentCount = document.querySelector('.comment-count');
+                    
+                    if (commentsList) {
+                        if (data.comments.length > 0) {
+                            commentsList.innerHTML = data.comments.map(comment => renderComment(comment)).join('');
+                        } else {
+                            commentsList.innerHTML = '<div class="no-comments">No comments yet. Be the first to comment!</div>';
+                        }
+                    }
+                    
+                    if (commentCount) {
+                        commentCount.textContent = data.comments.length;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading comments:', error);
+            }
         }
 
         function showError(message) {
@@ -306,6 +592,20 @@
             `;
         }
 
+        function showMessage(message) {
+            const messageEl = document.createElement('div');
+            messageEl.className = 'copy-message';
+            messageEl.textContent = message;
+            messageEl.style.color = '#4CAF50';
+            messageEl.style.marginTop = '10px';
+            
+            const submitBtn = document.getElementById('submitCommentBtn');
+            if (submitBtn) {
+                submitBtn.parentNode.appendChild(messageEl);
+                setTimeout(() => messageEl.remove(), 3000);
+            }
+        }
+
         function escapeHtml(text) {
             if (!text) return '';
             const div = document.createElement('div');
@@ -314,8 +614,7 @@
         }
 
         function shareNote() {
-            const noteId = getNoteIdFromUrl();
-            if (!noteId) return;
+            if (!currentNoteId) return;
             
             const shareUrl = window.location.href;
             
