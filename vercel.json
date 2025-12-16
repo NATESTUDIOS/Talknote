@@ -15,6 +15,11 @@
       "dest": "/public/note.html"
     },
     {
+      "src": "^/([^/.]+)$",
+      "dest": "/public/$1.html",
+      "check": true
+    },
+    {
       "src": "^/$",
       "dest": "/public/index.html"
     },
