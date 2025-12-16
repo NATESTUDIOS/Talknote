@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talknote | Sign In</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f8f8;
+            --bg-tertiary: #f0f0f0;
+            --bg-elevated: #ffffff;
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --text-tertiary: #999999;
+            --border: #e0e0e0;
+            --accent: #000000;
+            --accent-hover: #333333;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+            --success: #000000;
+            --danger: #ff4444;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #000000;
+            --bg-secondary: #111111;
+            --bg-tertiary: #222222;
+            --bg-elevated: #1a1a1a;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --text-tertiary: #777777;
+            --border: #333333;
+            --accent: #ffffff;
+            --accent-hover: #e0e0e0;
+            --shadow: 0 1px 3px rgba(255,255,255,0.08);
+            --shadow-lg: 0 8px 24px rgba(255,255,255,0.12);
+            --success: #ffffff;
+            --danger: #ff6666;
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            color: var(--text-primary);
+        }
+
+        .auth-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .auth-header p {
+            color: var(--text-secondary);
+            font-size: 15px;
+        }
+
+        .auth-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: var(--shadow-lg);
+            position: relative;
+        }
+
+        .auth-mode-toggle {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .auth-mode-toggle:hover {
+            background: var(--bg-secondary);
+            transform: translateY(-2px);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 16px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: var(--bg-secondary);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-secondary);
+            transform: translateY(-2px);
+        }
+
+        .auth-footer {
+            text-align: center;
+            margin-top: 24px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .auth-footer a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .auth-footer a:hover {
+            text-decoration: underline;
+        }
+
+        .error-message {
+            background: var(--danger);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+            animation: slideDown 0.3s ease;
+        }
+
+        .success-message {
+            background: var(--success);
+            color: var(--bg-primary);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            z-index: 100;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-secondary);
+            transform: scale(1.05);
+        }
+
+        .loading {
+            display: none;
+        }
+
+        .loading.active {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .password-requirements {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+
+        .form-group.hidden {
+            display: none;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .password-wrapper {
+            position: relative;
+        }
+
+        /* Password strength indicator */
+        .password-strength {
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .strength-bar {
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .strength-weak { background: var(--danger); width: 33%; }
+        .strength-medium { background: #ffaa00; width: 66%; }
+        .strength-strong { background: var(--success); width: 100%; }
+    </style>
+</head>
+<body>
+    <!-- Theme Toggle -->
+    <button class="theme-toggle" id="themeToggle">
+        <i class="fas fa-moon"></i>
+    </button>
+
+    <!-- Auth Container -->
+    <div class="auth-container">
+        <div class="auth-header">
+            <div class="logo">
+                <i class="fas fa-comment-alt"></i>
+                Talknote
+            </div>
+            <h1 id="modeTitle">Welcome back</h1>
+            <p id="modeSubtitle">Sign in to your account to continue</p>
+        </div>
+
+        <div class="auth-card">
+            <!-- Mode Toggle -->
+            <button class="auth-mode-toggle" id="modeToggle">
+                <i class="fas fa-exchange-alt"></i>
+                <span id="modeToggleText">Switch to Sign Up</span>
+            </button>
+
+            <!-- Messages -->
+            <div class="error-message" id="errorMessage"></div>
+            <div class="success-message" id="successMessage"></div>
+            
+            <!-- Form -->
+            <form id="authForm">
+                <!-- Email Field (Always shown) -->
+                <div class="form-group">
+                    <label class="form-label" for="email">Email</label>
+                    <input type="email" 
+                           class="form-input" 
+                           id="email" 
+                           placeholder="you@example.com"
+                           required>
+                </div>
+                
+                <!-- Password Field (Always shown) -->
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" 
+                               class="form-input" 
+                               id="password" 
+                               placeholder="••••••••"
+                               required
+                               oninput="checkPasswordStrength()">
+                        <button type="button" class="password-toggle" onclick="togglePassword()">
+                            <i class="fas fa-eye" id="passwordToggleIcon"></i>
+                        </button>
+                    </div>
+                    <div class="password-strength" id="passwordStrength">
+                        <div class="strength-bar" id="strengthBar"></div>
+                    </div>
+                    <div class="password-requirements" id="passwordRequirements">
+                        At least 8 characters with uppercase, lowercase, and numbers
+                    </div>
+                </div>
+                
+                <!-- Confirm Password (Only for registration) -->
+                <div class="form-group hidden" id="confirmPasswordGroup">
+                    <label class="form-label" for="confirmPassword">Confirm Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" 
+                               class="form-input" 
+                               id="confirmPassword" 
+                               placeholder="••••••••">
+                        <button type="button" class="password-toggle" onclick="toggleConfirmPassword()">
+                            <i class="fas fa-eye" id="confirmPasswordToggleIcon"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Display Name (Only for registration) -->
+                <div class="form-group hidden" id="displayNameGroup">
+                    <label class="form-label" for="displayName">Display Name (Optional)</label>
+                    <input type="text" 
+                           class="form-input" 
+                           id="displayName" 
+                           placeholder="How you'll appear to others">
+                </div>
+                
+                <!-- Submit Button -->
+                <button type="submit" class="btn btn-primary" id="submitBtn">
+                    <span id="submitText">Sign In</span>
+                    <i class="fas fa-spinner loading" id="loadingIcon"></i>
+                </button>
+                
+                <!-- Alternative Action -->
+                <div class="auth-footer">
+                    <p id="authFooterText">
+                        Don't have an account? 
+                        <a href="#" onclick="toggleMode(); return false;">Sign up</a>
+                    </p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/theme-manager.js"></script>
+    <script>
+        // State
+        let isLoginMode = true;
+        let passwordVisible = false;
+        let confirmPasswordVisible = false;
+
+        // Initialize theme
+        document.addEventListener('DOMContentLoaded', () => {
+            const themeManager = new ThemeManager();
+            themeManager.init();
+            updateUIForMode();
+        });
+
+        // Toggle between login and registration
+        function toggleMode() {
+            isLoginMode = !isLoginMode;
+            updateUIForMode();
+            clearMessages();
+            
+            // Clear form except email
+            if (isLoginMode) {
+                document.getElementById('displayName').value = '';
+                document.getElementById('confirmPassword').value = '';
+            }
+        }
+
+        // Update UI based on current mode
+        function updateUIForMode() {
+            const modeTitle = document.getElementById('modeTitle');
+            const modeSubtitle = document.getElementById('modeSubtitle');
+            const modeToggleText = document.getElementById('modeToggleText');
+            const submitText = document.getElementById('submitText');
+            const authFooterText = document.getElementById('authFooterText');
+            
+            // Show/hide registration fields
+            document.getElementById('confirmPasswordGroup').classList.toggle('hidden', isLoginMode);
+            document.getElementById('displayNameGroup').classList.toggle('hidden', isLoginMode);
+            document.getElementById('passwordRequirements').style.display = isLoginMode ? 'none' : 'block';
+            document.getElementById('passwordStrength').style.display = isLoginMode ? 'none' : 'block';
+            
+            if (isLoginMode) {
+                // Login mode
+                modeTitle.textContent = 'Welcome back';
+                modeSubtitle.textContent = 'Sign in to your account to continue';
+                modeToggleText.textContent = 'Switch to Sign Up';
+                submitText.textContent = 'Sign In';
+                authFooterText.innerHTML = 'Don\'t have an account? <a href="#" onclick="toggleMode(); return false;">Sign up</a>';
+                document.title = 'Talknote | Sign In';
+            } else {
+                // Registration mode
+                modeTitle.textContent = 'Create Account';
+                modeSubtitle.textContent = 'Start your note-taking journey';
+                modeToggleText.textContent = 'Switch to Sign In';
+                submitText.textContent = 'Create Account';
+                authFooterText.innerHTML = 'Already have an account? <a href="#" onclick="toggleMode(); return false;">Sign in</a>';
+                document.title = 'Talknote | Sign Up';
+            }
+        }
+
+        // Toggle password visibility
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const icon = document.getElementById('passwordToggleIcon');
+            
+            passwordVisible = !passwordVisible;
+            passwordInput.type = passwordVisible ? 'text' : 'password';
+            icon.className = passwordVisible ? 'fas fa-eye-slash' : 'fas fa-eye';
+        }
+
+        // Toggle confirm password visibility
+        function toggleConfirmPassword() {
+            const confirmInput = document.getElementById('confirmPassword');
+            const icon = document.getElementById('confirmPasswordToggleIcon');
+            
+            confirmPasswordVisible = !confirmPasswordVisible;
+            confirmInput.type = confirmPasswordVisible ? 'text' : 'password';
+            icon.className = confirmPasswordVisible ? 'fas fa-eye-slash' : 'fas fa-eye';
+        }
+
+        // Check password strength
+        function checkPasswordStrength() {
+            if (isLoginMode) return;
+            
+            const password = document.getElementById('password').value;
+            const strengthBar = document.getElementById('strengthBar');
+            
+            // Remove all strength classes
+            strengthBar.className = 'strength-bar';
+            
+            if (!password) {
+                strengthBar.style.width = '0%';
+                return;
+            }
+            
+            // Calculate strength
+            let strength = 0;
+            if (password.length >= 8) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[a-z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^A-Za-z0-9]/.test(password)) strength++;
+            
+            // Update visual indicator
+            if (strength <= 2) {
+                strengthBar.classList.add('strength-weak');
+            } else if (strength <= 4) {
+                strengthBar.classList.add('strength-medium');
+            } else {
+                strengthBar.classList.add('strength-strong');
+            }
+        }
+
+        // Handle form submission
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const displayName = document.getElementById('displayName').value.trim();
+            const submitBtn = document.getElementById('submitBtn');
+            const loadingIcon = document.getElementById('loadingIcon');
+            
+            // Clear previous messages
+            clearMessages();
+            
+            // Validate
+            if (!email || !password) {
+                showError('Please fill in all required fields');
+                return;
+            }
+            
+            if (!isLoginMode) {
+                // Registration validation
+                if (password !== confirmPassword) {
+                    showError('Passwords do not match');
+                    return;
+                }
+                
+                if (password.length < 8) {
+                    showError('Password must be at least 8 characters long');
+                    return;
+                }
+                
+                if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+                    showError('Password must contain uppercase, lowercase letters and numbers');
+                    return;
+                }
+            }
+            
+            // Show loading
+            submitBtn.disabled = true;
+            loadingIcon.classList.add('active');
+            
+            try {
+                const action = isLoginMode ? 'login' : 'register';
+                const body = {
+                    action: action,
+                    email: email,
+                    password: password
+                };
+                
+                // Add display name for registration
+                if (!isLoginMode && displayName) {
+                    body.displayName = displayName;
+                }
+                
+                const response = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (isLoginMode) {
+                        // Login success
+                        handleLoginSuccess(data);
+                    } else {
+                        // Registration success
+                        handleRegistrationSuccess(data);
+                    }
+                } else {
+                    showError(data.error || `${action === 'login' ? 'Login' : 'Registration'} failed`);
+                }
+            } catch (error) {
+                console.error('Auth error:', error);
+                showError('Network error. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+                loadingIcon.classList.remove('active');
+            }
+        });
+
+        // Handle successful login
+        function handleLoginSuccess(data) {
+            // Store session
+            localStorage.setItem('talknote_session', data.session_id);
+            localStorage.setItem('talknote_user_id', data.user_id);
+            localStorage.setItem('talknote_uid', data.uid);
+            
+            // Show success message
+            showSuccess('Login successful! Redirecting...');
+            
+            // Redirect to dashboard
+            setTimeout(() => {
+                window.location.href = '/dashboard.html';
+            }, 1000);
+        }
+
+        // Handle successful registration
+        function handleRegistrationSuccess(data) {
+            // Store session
+            localStorage.setItem('talknote_session', data.session_id);
+            localStorage.setItem('talknote_user_id', data.user_id);
+            localStorage.setItem('talknote_uid', data.uid);
+            
+            // Show success message
+            showSuccess('Account created successfully! Redirecting...');
+            
+            // Redirect to dashboard
+            setTimeout(() => {
+                window.location.href = '/dashboard.html';
+            }, 1500);
+        }
+
+        // Helper functions
+        function showError(message) {
+            const errorMessage = document.getElementById('errorMessage');
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function showSuccess(message) {
+            const successMessage = document.getElementById('successMessage');
+            successMessage.textContent = message;
+            successMessage.style.display = 'block';
+            successMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function clearMessages() {
+            document.getElementById('errorMessage').style.display = 'none';
+            document.getElementById('successMessage').style.display = 'none';
+        }
+
+        // Set up mode toggle button
+        document.getElementById('modeToggle').addEventListener('click', toggleMode);
+        
+        // Auto-check password strength on input
+        document.getElementById('password').addEventListener('input', checkPasswordStrength);
+        
+        // Check URL parameters for auto-redirect
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('mode') === 'register') {
+            isLoginMode = false;
+            updateUIForMode();
+        }
+    </script>
+</body>
+</html>
