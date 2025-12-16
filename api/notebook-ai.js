@@ -1,258 +1,131 @@
-// pages/api/talknote/ai.js (for Next.js) or api/talknote/ai.js (for other frameworks)
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// api/notebook-ai.js
+import { db } from "../utils/firebase.js";
 
+// Gemini REST API configuration
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
-// Initialize Gemini AI - using gemini-1.5-flash for heading/summary
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const headingModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-const commandModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// Helper to validate user existence
+async function validateUser(userId) {
+  const snapshot = await db.ref('users').orderByChild('user_id').equalTo(userId).once('value');
+  return snapshot.exists();
+}
 
-// Command registry - merged standard and custom commands
-const commands = new Map();
-
-// Command descriptions for explaining what was done
-const commandDescriptions = new Map();
-
-// Pre-defined commands with descriptions
-const predefinedCommands = {
-  // Content Transformation
-  'summarize': {
-    prompt: 'Provide a concise 3-5 bullet point summary of the key points.',
-    description: 'Created a bullet point summary of key points'
-  },
-  'auto-correct': {
-    prompt: 'Fix spelling, grammar, and improve readability while keeping the original meaning.',
-    description: 'Corrected spelling and grammar, improved readability'
-  },
-  'explain': {
-    prompt: 'Explain this content in simple terms. Break down complex concepts.',
-    description: 'Explained content in simpler terms'
-  },
-  'organize': {
-    prompt: 'Reorganize this content logically with clear sections and headings.',
-    description: 'Reorganized content with clear sections'
-  },
-  'expand': {
-    prompt: 'Add more details, examples, and relevant information to expand on the ideas.',
-    description: 'Expanded content with details and examples'
-  },
-  'simplify': {
-    prompt: 'Make this content simpler and easier to understand.',
-    description: 'Simplified content for better understanding'
-  },
-  'translate': {
-    prompt: 'Translate this content to clear, natural English.',
-    description: 'Translated to natural English'
-  },
-  'bulletize': {
-    prompt: 'Convert this content into bullet points.',
-    description: 'Converted to bullet point format'
-  },
-  
-  // Analysis & Extraction
-  'action-items': {
-    prompt: 'Extract actionable tasks and to-do items from the content.',
-    description: 'Extracted actionable tasks'
-  },
-  'keywords': {
-    prompt: 'Extract 5-7 key keywords or phrases from the content.',
-    description: 'Extracted key keywords and phrases'
-  },
-  'tl-dr': {
-    prompt: 'Provide a one-sentence summary that captures the essence.',
-    description: 'Created one-sentence TL;DR summary'
-  },
-  'sentiment': {
-    prompt: 'Analyze the sentiment (positive, negative, neutral) and provide evidence.',
-    description: 'Analyzed content sentiment'
-  },
-  'complexity': {
-    prompt: 'Rate the complexity from 1-5 (1=simple, 5=complex) and explain why.',
-    description: 'Rated content complexity'
-  },
-  'pros-cons': {
-    prompt: 'List the pros and cons mentioned or implied in the content.',
-    description: 'Listed pros and cons'
-  },
-  'dates': {
-    prompt: 'Extract all dates, deadlines, and time references.',
-    description: 'Extracted dates and deadlines'
-  },
-  'tags': {
-    prompt: 'Suggest 3-5 relevant tags for organizing this note.',
-    description: 'Suggested organizing tags'
-  },
-  
-  // Study & Learning
-  'qa': {
-    prompt: 'Generate 3 questions and answers based on this content.',
-    description: 'Created Q&A pairs for study'
-  },
-  'flashcards': {
-    prompt: 'Create 5 flashcards (question/answer) for study purposes.',
-    description: 'Created study flashcards'
-  },
-  'study-guide': {
-    prompt: 'Create a study guide with key concepts and definitions.',
-    description: 'Created comprehensive study guide'
-  },
-  'analogy': {
-    prompt: 'Create an analogy to help explain the main concept.',
-    description: 'Created explanatory analogy'
-  },
-  'examples': {
-    prompt: 'Add 2-3 relevant examples to illustrate the concepts.',
-    description: 'Added illustrative examples'
-  },
-  
-  // Productivity & Formatting
-  'checklist': {
-    prompt: 'Convert into a step-by-step checklist with estimated times.',
-    description: 'Converted to checklist format'
-  },
-  'markdown': {
-    prompt: 'Format this content as clean markdown with proper headings.',
-    description: 'Formatted as markdown'
-  },
-  'swot': {
-    prompt: 'Perform a SWOT analysis (Strengths, Weaknesses, Opportunities, Threats).',
-    description: 'Performed SWOT analysis'
-  },
-  'improve': {
-    prompt: 'Improve this content for clarity, flow, and impact.',
-    description: 'Improved content clarity and flow'
-  },
-  'restructure': {
-    prompt: 'Restructure this content with better organization and flow.',
-    description: 'Restructured content organization'
+// Call Gemini REST API
+async function callGemini(prompt, maxTokens = 1000) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY environment variable is not set');
   }
-};
 
-// Register all predefined commands
-Object.entries(predefinedCommands).forEach(([name, config]) => {
-  commands.set(name, config.prompt);
-  commandDescriptions.set(name, config.description);
-});
+  const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        temperature: 0.7,
+        topP: 0.8,
+        topK: 40
+      }
+    })
+  });
 
-// Helper function to parse heading response
-function parseHeadingResponse(text) {
-  const titleMatch = text.match(/TITLE:\s*(.+?)(?:\n|$)/i);
-  const summaryMatch = text.match(/SUMMARY:\s*(.+)/i);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error?.message || `Gemini API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  
+  if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+    return data.candidates[0].content.parts[0].text;
+  }
+  
+  throw new Error('Invalid response from Gemini API');
+}
+
+// Generate heading and summary
+async function generateHeadingSummary(content, type = 'note') {
+  const prompt = `Generate a title and summary for this ${type}.
+
+Content:
+${content.substring(0, 3000)}
+
+Format your response EXACTLY like this:
+TITLE: [2-3 word title]
+SUMMARY: [1-2 sentence summary]
+
+Make the title catchy and relevant. Make the summary concise and capture the essence.`;
+
+  const result = await callGemini(prompt, 500);
+  
+  // Parse response
+  const titleMatch = result.match(/TITLE:\s*(.+?)(?:\n|$)/i);
+  const summaryMatch = result.match(/SUMMARY:\s*(.+)/i);
   
   return {
-    heading: titleMatch ? titleMatch[1].trim() : 'Untitled Note',
+    title: titleMatch ? titleMatch[1].trim() : 'Untitled',
     summary: summaryMatch ? summaryMatch[1].trim() : 'No summary available.'
   };
 }
 
-// Generate heading and summary only using gemini-1.5
-async function generateHeadingAndSummary(article, type) {
-  const prompt = `
-You are TalkNote - an intelligent notebook assistant. Generate a title and summary for this ${type} note.
-
-Note content:
-"""
-${article.substring(0, 5000)}
-"""
-
-Instructions:
-1. Title: 2-3 words, catchy, no punctuation
-2. Summary: 1-2 sentences, capture the essence
-
-Format your response exactly like this:
-TITLE: [your title here]
-SUMMARY: [your summary here]
-
-Keep the summary concise and focused on the main points.`;
-
-  try {
-    const response = await headingModel.generateContent(prompt);
-    const text = response.response.text();
-    return parseHeadingResponse(text);
-  } catch (error) {
-    console.error("TalkNote heading generation error:", error);
-    return {
-      heading: "Untitled",
-      summary: "Failed to generate summary."
-    };
-  }
-}
-
-// Process with a command
-async function processWithCommand(article, type, command) {
-  const commandTemplate = commands.get(command);
-  const defaultDescription = commandDescriptions.get(command) || `Processed with "${command}" command`;
+// Pre-defined commands
+const COMMANDS = {
+  // Content enhancement
+  'summarize': 'Provide a concise 3-5 bullet point summary of the key points.',
+  'improve': 'Fix grammar, spelling, and improve readability while keeping the original meaning.',
+  'simplify': 'Make this content simpler and easier to understand.',
+  'expand': 'Add more details, examples, and explanations.',
+  'organize': 'Reorganize with clear sections and logical flow.',
   
-  if (!commandTemplate) {
-    // If command doesn't exist, use it as a custom prompt
-    const customPrompt = `
-You are TalkNote - an intelligent notebook assistant. The user wants you to: ${command}
-
-Note content (type: ${type}):
-"""
-${article}
-"""
-
-Provide the requested output in a clear, useful format.`;
-    
-    try {
-      const response = await commandModel.generateContent(customPrompt);
-      return {
-        content: response.response.text(),
-        actionDescription: `Custom processing: ${command}`
-      };
-    } catch (error) {
-      console.error("TalkNote command processing error:", error);
-      return {
-        content: `Failed to process: ${command}. Error: ${error.message}`,
-        actionDescription: 'Failed to process command'
-      };
-    }
-  }
+  // Analysis
+  'analyze': 'Identify key themes, insights, and main ideas.',
+  'action-items': 'Extract actionable tasks and to-do items.',
+  'questions': 'Generate 5 relevant questions based on this content.',
+  'keywords': 'Extract 5-7 key keywords or phrases.',
   
-  // Use predefined command
-  const prompt = `
-You are TalkNote - an intelligent notebook assistant. Execute this command: ${command}
+  // Formatting
+  'bullet-points': 'Convert into clear bullet points.',
+  'markdown': 'Format as clean markdown with proper headings.',
+  'checklist': 'Convert into a step-by-step checklist.',
+  
+  // Learning
+  'explain': 'Explain the concepts in simple terms.',
+  'study-guide': 'Create a study guide with key concepts.',
+  
+  // Creative
+  'brainstorm': 'Brainstorm related ideas and expansions.',
+  'rewrite': 'Rewrite in a different style while keeping the core message.',
+  
+  // Utility
+  'translate': 'Translate to clear, natural English.',
+  'tl-dr': 'Create a one-sentence TL;DR summary.'
+};
 
-Command instructions: ${commandTemplate}
-
-Note content (type: ${type}):
-"""
-${article}
-"""
-
-Provide the requested output in a clear, useful format.`;
-
-  try {
-    const response = await commandModel.generateContent(prompt);
-    return {
-      content: response.response.text(),
-      actionDescription: defaultDescription
-    };
-  } catch (error) {
-    console.error("TalkNote command processing error:", error);
-    return {
-      content: `Failed to process command "${command}". Error: ${error.message}`,
-      actionDescription: 'Command processing failed'
-    };
-  }
-}
-
-// Register a new command
-function registerCommand(name, prompt, description = null) {
-  commands.set(name, prompt);
-  if (description) {
-    commandDescriptions.set(name, description);
+// Process content with command
+async function processCommand(content, command, type = 'note', customPrompt = null) {
+  let prompt;
+  
+  if (customPrompt) {
+    prompt = `${customPrompt}\n\nContent:\n${content}`;
+  } else if (COMMANDS[command]) {
+    prompt = `${COMMANDS[command]}\n\nContent:\n${content}`;
   } else {
-    commandDescriptions.set(name, `Processed with "${name}" command`);
+    throw new Error(`Unknown command: ${command}. Available commands: ${Object.keys(COMMANDS).join(', ')}`);
   }
-}
 
-// Unregister a command
-function unregisterCommand(name) {
-  commands.delete(name);
-  commandDescriptions.delete(name);
+  const result = await callGemini(prompt);
+  
+  return {
+    result,
+    command: customPrompt ? 'custom' : command,
+    description: customPrompt ? `Custom: ${customPrompt}` : COMMANDS[command]
+  };
 }
 
 // Main API handler
@@ -260,210 +133,129 @@ export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
 
   // Handle preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // Only allow POST requests
+  // Only POST allowed
   if (req.method !== 'POST') {
-    return res.status(405).json({ 
-      success: false, 
-      error: 'Method not allowed. Use POST.' 
-    });
-  }
-
-  // Parse request body
-  let { article, type = 'general', command = null, heading = false } = req.body;
-
-  // Validate article
-  if (!article || typeof article !== 'string' || article.trim().length === 0) {
-    return res.status(400).json({
+    return res.status(405).json({
       success: false,
-      error: "Valid 'article' text is required in the request body."
+      error: 'Method not allowed. Use POST.'
     });
-  }
-
-  // Character limit for safety
-  const MAX_LENGTH = 15000;
-  if (article.length > MAX_LENGTH) {
-    article = article.substring(0, MAX_LENGTH);
-  }
-
-  // Clean and validate type
-  const validTypes = [
-    'general', 'meeting', 'study', 'code', 'task', 'idea', 
-    'journal', 'recipe', 'project', 'email', 'research', 
-    'brainstorm', 'summary', 'note', 'document', 'plan'
-  ];
-  
-  if (!validTypes.includes(type)) {
-    type = 'general';
   }
 
   try {
-    // Case 1: Only heading requested (fast path)
-    if (heading && !command) {
-      const headingResult = await generateHeadingAndSummary(article, type);
-      
-      return res.status(200).json({
-        success: true,
-        data: {
-          heading: headingResult.heading,
+    const { action, user_id, content, type = 'note', command, custom_prompt } = req.body;
+
+    // Validate required fields
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'user_id is required'
+      });
+    }
+
+    // Verify user exists
+    const userExists = await validateUser(user_id);
+    if (!userExists) {
+      return res.status(401).json({
+        success: false,
+        error: 'User does not exist or is not authorized'
+      });
+    }
+
+    if (!content) {
+      return res.status(400).json({
+        success: false,
+        error: 'content is required'
+      });
+    }
+
+    // Content length limit
+    if (content.length > 10000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Content too long (max 10000 characters)'
+      });
+    }
+
+    // Route based on action
+    switch (action) {
+      case 'heading':
+        // Generate heading and summary
+        const headingResult = await generateHeadingSummary(content, type);
+        return res.status(200).json({
+          success: true,
+          title: headingResult.title,
           summary: headingResult.summary,
           type,
-          timestamp: new Date().toISOString(),
-          length: article.length,
-          service: 'TalkNote AI'
+          timestamp: Date.now()
+        });
+
+      case 'process':
+        // Process with command
+        if (!command && !custom_prompt) {
+          return res.status(400).json({
+            success: false,
+            error: 'Either command or custom_prompt is required'
+          });
         }
-      });
-    }
 
-    // Case 2: Process with command
-    let contentResult = null;
-    let headingResult = null;
-    
-    // Get processed content
-    if (command) {
-      contentResult = await processWithCommand(article, type, command);
-    } else {
-      // Default to auto-correct if no command specified
-      contentResult = await processWithCommand(article, type, 'auto-correct');
-    }
-    
-    // Get heading if requested
-    if (heading) {
-      headingResult = await generateHeadingAndSummary(article, type);
-    }
+        const processResult = await processCommand(content, command, type, custom_prompt);
+        return res.status(200).json({
+          success: true,
+          result: processResult.result,
+          command: processResult.command,
+          description: processResult.description,
+          type,
+          timestamp: Date.now()
+        });
 
-    // Build response
-    const response = {
-      success: true,
-      data: {
-        content: contentResult.content,
-        actionDescription: contentResult.actionDescription,
-        ...(headingResult && {
-          heading: headingResult.heading,
-          summary: headingResult.summary
-        }),
-        type,
-        ...(command && { 
-          command: command,
-          isPredefined: commands.has(command)
-        }),
-        timestamp: new Date().toISOString(),
-        length: article.length,
-        service: 'TalkNote AI'
-      }
-    };
+      case 'commands':
+        // List available commands
+        return res.status(200).json({
+          success: true,
+          commands: Object.keys(COMMANDS),
+          total: Object.keys(COMMANDS).length,
+          timestamp: Date.now()
+        });
 
-    return res.status(200).json(response);
+      default:
+        return res.status(400).json({
+          success: false,
+          error: 'Valid action required: heading, process, or commands'
+        });
+    }
 
   } catch (error) {
-    console.error('TalkNote AI processing error:', error);
-    
-    // User-friendly error messages
-    let statusCode = 500;
-    let errorMessage = 'TalkNote AI processing failed. Please try again.';
-    
-    if (error.message?.includes('API_KEY') || error.message?.includes('key is not valid')) {
-      statusCode = 503;
-      errorMessage = 'TalkNote AI service is currently unavailable.';
-    } else if (error.message?.includes('quota') || error.message?.includes('resource exhausted')) {
-      statusCode = 429;
-      errorMessage = 'TalkNote AI service limit reached. Please try again later.';
-    } else if (error.message?.includes('safety') || error.message?.includes('blocked')) {
-      statusCode = 400;
-      errorMessage = 'Content could not be processed due to safety policies.';
+    console.error('AI API error:', error);
+
+    // Gemini API specific errors
+    if (error.message.includes('API_KEY') || error.message.includes('quota')) {
+      return res.status(503).json({
+        success: false,
+        error: 'AI service temporarily unavailable'
+      });
     }
 
-    return res.status(statusCode).json({
+    if (error.message.includes('safety') || error.message.includes('blocked')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Content could not be processed due to safety policies'
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      error: errorMessage,
-      service: 'TalkNote AI',
-      ...(process.env.NODE_ENV === 'development' && { debug: error.message })
+      error: error.message || 'Internal server error'
     });
   }
-}
-
-// Command management endpoints (optional separate file)
-export async function commandsHandler(req, res) {
-  if (req.method === 'GET') {
-    // List all available commands
-    const allCommands = Array.from(commands.entries()).map(([name, prompt]) => ({
-      name,
-      description: commandDescriptions.get(name) || 'No description available',
-      prompt: prompt.substring(0, 100) + '...',
-      isPredefined: Object.keys(predefinedCommands).includes(name)
-    }));
-    
-    return res.status(200).json({
-      success: true,
-      service: 'TalkNote AI',
-      commands: allCommands,
-      totalCommands: commands.size,
-      noteTypes: validTypes
-    });
-  }
-  
-  if (req.method === 'POST') {
-    // Register new command
-    const { name, prompt, description } = req.body;
-    
-    if (!name || !prompt) {
-      return res.status(400).json({
-        success: false,
-        error: 'Command name and prompt are required.',
-        service: 'TalkNote AI'
-      });
-    }
-    
-    registerCommand(name, prompt, description);
-    
-    return res.status(200).json({
-      success: true,
-      message: `Command '${name}' registered successfully in TalkNote AI.`,
-      totalCommands: commands.size,
-      service: 'TalkNote AI'
-    });
-  }
-  
-  if (req.method === 'DELETE') {
-    // Remove command
-    const { name } = req.body;
-    
-    if (!name) {
-      return res.status(400).json({
-        success: false,
-        error: 'Command name is required.',
-        service: 'TalkNote AI'
-      });
-    }
-    
-    if (!commands.has(name)) {
-      return res.status(404).json({
-        success: false,
-        error: `Command '${name}' not found.`,
-        service: 'TalkNote AI'
-      });
-    }
-    
-    unregisterCommand(name);
-    
-    return res.status(200).json({
-      success: true,
-      message: `Command '${name}' removed successfully.`,
-      totalCommands: commands.size,
-      service: 'TalkNote AI'
-    });
-  }
-  
-  return res.status(405).json({ 
-    success: false, 
-    error: 'Method not allowed.',
-    service: 'TalkNote AI'
-  });
 }
