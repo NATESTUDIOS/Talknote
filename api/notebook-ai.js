@@ -319,10 +319,8 @@ export default async function handler(req, res) {
         const headingResult = await generateHeadingSummary(content, type);
         return res.status(200).json({
           success: true,
-          data: {
-            title: headingResult.title,
-            summary: headingResult.summary
-          },
+          title: headingResult.title,
+          summary: headingResult.summary,
           type,
           timestamp: Date.now(),
           model: HEADING_MODEL,
@@ -371,10 +369,9 @@ export default async function handler(req, res) {
         const processResult = await processContent(content, command, type);
         return res.status(200).json({
           success: true,
-          data: {
-            explanation: processResult.explanation,
-            result: processResult.result
-          },
+
+          explanation: processResult.explanation,
+          result: processResult.result,
           command: processResult.command,
           is_predefined: processResult.isPredefined,
           description: processResult.description,
@@ -408,10 +405,8 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
           success: true,
-          data: {
             commands: commandsList,
-            total: commandsList.length
-          },
+            total: commandsList.length,
           timestamp: Date.now(),
           usage: userUsage
         });
@@ -428,9 +423,7 @@ export default async function handler(req, res) {
         const usageStats = await getUserUsage(user_id);
         return res.status(200).json({
           success: true,
-          data: {
-            usage: usageStats
-          },
+            usage: usageStats,
           timestamp: Date.now()
         });
 
@@ -438,7 +431,6 @@ export default async function handler(req, res) {
         // Return current configuration (read-only, doesn't count toward usage)
         return res.status(200).json({
           success: true,
-          data: {
             config: {
               heading_model: HEADING_MODEL,
               process_model: PROCESS_MODEL,
@@ -452,8 +444,7 @@ export default async function handler(req, res) {
                 heading: { title: 'string', summary: 'string' },
                 process: { explanation: 'string', result: 'string' }
               }
-            }
-          },
+            },
           timestamp: Date.now()
         });
 
