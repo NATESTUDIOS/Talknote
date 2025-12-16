@@ -14,14 +14,15 @@
         }
 
         body {
-           min-height: 100vh;
+            min-height: 100vh;
             background: var(--bg-primary);
             color: var(--text-primary);
             transition: all 0.3s ease;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            overflow-x: hidden;
         }
 
         :root {
-            /* Light theme */
             --bg-primary: #ffffff;
             --bg-secondary: #f8f8f8;
             --bg-tertiary: #f0f0f0;
@@ -35,6 +36,10 @@
             --shadow: 0 1px 3px rgba(0,0,0,0.08);
             --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
             --card-bg: #ffffff;
+            --success: #000000;
+            --danger: #ff4444;
+            --warning: #ffaa00;
+            --info: #0066cc;
         }
 
         [data-theme="dark"] {
@@ -51,22 +56,10 @@
             --shadow: 0 1px 3px rgba(255,255,255,0.08);
             --shadow-lg: 0 8px 24px rgba(255,255,255,0.12);
             --card-bg: #1a1a1a;
-        }
-
-        [data-theme="light"] {
-            --bg-primary: #ffffff;
-            --bg-secondary: #f8f8f8;
-            --bg-tertiary: #f0f0f0;
-            --bg-elevated: #ffffff;
-            --text-primary: #000000;
-            --text-secondary: #666666;
-            --text-tertiary: #999999;
-            --border: #e0e0e0;
-            --accent: #000000;
-            --accent-hover: #333333;
-            --shadow: 0 1px 3px rgba(0,0,0,0.08);
-            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
-            --card-bg: #ffffff;
+            --success: #ffffff;
+            --danger: #ff6666;
+            --warning: #ffcc00;
+            --info: #3399ff;
         }
 
         .container {
@@ -86,6 +79,12 @@
             border-bottom: 1px solid var(--border);
             z-index: 1000;
             padding: 16px 0;
+            transition: all 0.3s ease;
+        }
+
+        .navbar.scrolled {
+            padding: 12px 0;
+            box-shadow: var(--shadow-lg);
         }
 
         .nav-content {
@@ -102,7 +101,16 @@
             text-decoration: none;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .logo:hover {
+            transform: translateY(-2px);
+        }
+
+        .logo i {
+            font-size: 22px;
         }
 
         .nav-links {
@@ -116,15 +124,38 @@
             text-decoration: none;
             font-weight: 500;
             font-size: 15px;
-            transition: color 0.2s;
+            transition: all 0.2s;
+            position: relative;
+            padding: 8px 0;
         }
 
         .nav-link:hover {
             color: var(--text-primary);
         }
 
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent);
+            transition: width 0.3s ease;
+        }
+
+        .nav-link:hover::after {
+            width: 100%;
+        }
+
+        .nav-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
         .theme-toggle {
-            background: none;
+            background: var(--bg-tertiary);
             border: 1px solid var(--border);
             border-radius: 50%;
             width: 40px;
@@ -135,43 +166,88 @@
             cursor: pointer;
             color: var(--text-primary);
             transition: all 0.2s;
-            background: var(--bg-tertiary);
         }
 
         .theme-toggle:hover {
             background: var(--bg-secondary);
             transform: scale(1.05);
+            box-shadow: var(--shadow);
         }
 
-        .theme-toggle i {
-            font-size: 16px;
+        .nav-button {
+            padding: 10px 22px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .nav-button.primary {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        .nav-button.primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .nav-button.secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .nav-button.secondary:hover {
+            background: var(--bg-secondary);
+            transform: translateY(-2px);
         }
 
         /* Hero Section */
         .hero {
-            padding: 140px 0 80px;
+            padding: 180px 0 100px;
             text-align: center;
-            max-width: 720px;
+            max-width: 800px;
             margin: 0 auto;
+            position: relative;
+        }
+
+        .hero-bg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: -1;
         }
 
         .hero h1 {
-            font-size: 56px;
-            font-weight: 700;
-            letter-spacing: -1.5px;
+            font-size: 64px;
+            font-weight: 800;
+            letter-spacing: -2px;
             line-height: 1.1;
-            margin-bottom: 24px;
+            margin-bottom: 28px;
             background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
 
-        .hero p {
-            font-size: 18px;
+        .hero-subtitle {
+            font-size: 20px;
             line-height: 1.6;
             color: var(--text-secondary);
-            margin-bottom: 40px;
+            margin-bottom: 48px;
             max-width: 600px;
             margin-left: auto;
             margin-right: auto;
@@ -179,31 +255,54 @@
 
         .cta-buttons {
             display: flex;
-            gap: 16px;
+            gap: 20px;
             justify-content: center;
+            margin-bottom: 60px;
         }
 
         .btn {
-            padding: 14px 32px;
-            border-radius: 12px;
+            padding: 16px 36px;
+            border-radius: 14px;
             font-weight: 600;
             font-size: 16px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
             border: none;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
         }
 
         .btn-primary {
             background: var(--accent);
             color: var(--bg-primary);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         }
 
         .btn-primary:hover {
             background: var(--accent-hover);
-            transform: translateY(-2px);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
         }
 
         .btn-secondary {
@@ -214,93 +313,427 @@
 
         .btn-secondary:hover {
             background: var(--bg-secondary);
-            transform: translateY(-2px);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--text-primary);
+            border: 2px solid var(--border);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--accent);
+            background: var(--bg-tertiary);
+        }
+
+        .hero-stats {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 60px;
+            padding-top: 40px;
+            border-top: 1px solid var(--border);
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         /* Features */
-        .features {
-            padding: 100px 0;
+        .section {
+            padding: 120px 0;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 80px;
         }
 
         .section-title {
-            font-size: 36px;
+            font-size: 42px;
             font-weight: 700;
-            text-align: center;
-            margin-bottom: 60px;
+            margin-bottom: 20px;
             letter-spacing: -1px;
+            color: var(--text-primary);
+        }
+
+        .section-subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
         }
 
         .features-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-            margin-top: 40px;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 32px;
         }
 
         .feature-card {
             background: var(--bg-elevated);
             border: 1px solid var(--border);
-            border-radius: 16px;
+            border-radius: 20px;
             padding: 40px 32px;
-            transition: all 0.3s ease;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.6s ease;
         }
 
         .feature-card:hover {
-            border-color: var(--text-primary);
-            transform: translateY(-4px);
+            border-color: var(--accent);
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .feature-card:hover::before {
+            transform: translateX(0);
         }
 
         .feature-icon {
-            width: 48px;
-            height: 48px;
+            width: 60px;
+            height: 60px;
             background: var(--bg-tertiary);
-            border-radius: 12px;
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 24px;
-            font-size: 20px;
+            margin-bottom: 28px;
+            font-size: 24px;
             color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover .feature-icon {
+            background: var(--accent);
+            color: var(--bg-primary);
+            transform: rotate(5deg) scale(1.1);
         }
 
         .feature-card h3 {
-            font-size: 20px;
+            font-size: 22px;
             font-weight: 600;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
+            color: var(--text-primary);
         }
 
         .feature-card p {
             color: var(--text-secondary);
-            line-height: 1.6;
+            line-height: 1.7;
+            font-size: 16px;
+            margin-bottom: 24px;
+        }
+
+        .feature-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
             font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: gap 0.2s;
+        }
+
+        .feature-link:hover {
+            gap: 12px;
+        }
+
+        /* Demo Showcase */
+        .demo-section {
+            background: var(--bg-secondary);
+            border-radius: 40px;
+            padding: 80px 0;
+            margin: 80px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .demo-section::before {
+            content: '';
+            position: absolute;
+            top: -100px;
+            right: -100px;
+            width: 400px;
+            height: 400px;
+            background: var(--accent);
+            opacity: 0.03;
+            border-radius: 50%;
+        }
+
+        .demo-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+        }
+
+        .demo-text h2 {
+            font-size: 42px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+        }
+
+        .demo-text p {
+            font-size: 18px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 32px;
+        }
+
+        .demo-preview {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: var(--shadow-lg);
+            transform: perspective(1000px) rotateY(-5deg) rotateX(5deg);
+            transition: transform 0.4s ease;
+        }
+
+        .demo-preview:hover {
+            transform: perspective(1000px) rotateY(0) rotateX(0);
+        }
+
+        .demo-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .demo-window {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 24px;
+            min-height: 300px;
+        }
+
+        /* Testimonials */
+        .testimonials {
+            padding: 100px 0;
+        }
+
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .testimonial-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+            transition: all 0.3s ease;
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .testimonial-content {
+            font-size: 16px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            position: relative;
+            padding-left: 24px;
+        }
+
+        .testimonial-content::before {
+            content: '"';
+            position: absolute;
+            left: 0;
+            top: -10px;
+            font-size: 48px;
+            color: var(--accent);
+            opacity: 0.2;
+            font-family: serif;
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .author-avatar {
+            width: 48px;
+            height: 48px;
+            background: var(--bg-tertiary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .author-info h4 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .author-info p {
+            font-size: 14px;
+            color: var(--text-tertiary);
+        }
+
+        /* CTA Section */
+        .cta-section {
+            text-align: center;
+            padding: 100px 0;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            border-radius: 40px;
+            margin: 80px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23000000' fill-opacity='0.03' fill-rule='evenodd'/%3E%3C/svg%3E");
+            opacity: 0.3;
+        }
+
+        .cta-title {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+        }
+
+        .cta-subtitle {
+            font-size: 20px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 48px;
+            line-height: 1.6;
         }
 
         /* Footer */
         .footer {
-            padding: 60px 0 40px;
+            padding: 80px 0 40px;
             border-top: 1px solid var(--border);
-            margin-top: 100px;
+            background: var(--bg-secondary);
         }
 
         .footer-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 60px;
+            margin-bottom: 60px;
+        }
+
+        .footer-brand h3 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            gap: 10px;
+        }
+
+        .footer-brand p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 16px;
+        }
+
+        .social-link {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-tertiary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .social-link:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+            transform: translateY(-3px);
+        }
+
+        .footer-column h4 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 24px;
+            color: var(--text-primary);
         }
 
         .footer-links {
             display: flex;
-            gap: 24px;
+            flex-direction: column;
+            gap: 16px;
         }
 
         .footer-link {
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 14px;
+            transition: all 0.2s;
         }
 
         .footer-link:hover {
             color: var(--text-primary);
+            transform: translateX(5px);
+        }
+
+        .footer-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 40px;
+            border-top: 1px solid var(--border);
         }
 
         .copyright {
@@ -308,161 +741,570 @@
             font-size: 14px;
         }
 
+        .footer-legal {
+            display: flex;
+            gap: 24px;
+        }
+
+        .legal-link {
+            color: var(--text-tertiary);
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .legal-link:hover {
+            color: var(--text-secondary);
+        }
+
+        /* Mobile Menu */
+        .mobile-menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .mobile-menu {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 300px;
+            height: 100vh;
+            background: var(--bg-elevated);
+            border-left: 1px solid var(--border);
+            padding: 40px;
+            transition: right 0.3s ease;
+            z-index: 1001;
+        }
+
+        .mobile-menu.active {
+            right: 0;
+        }
+
+        .mobile-menu-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .mobile-menu-links {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .mobile-menu-link {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 18px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
         /* Responsive */
-        @media (max-width: 768px) {
+        @media (max-width: 1200px) {
             .hero h1 {
-                font-size: 40px;
+                font-size: 56px;
             }
-            
-            .hero {
-                padding: 120px 0 60px;
-            }
-            
-            .features-grid {
+
+            .demo-content {
                 grid-template-columns: 1fr;
+                gap: 60px;
             }
-            
+
+            .demo-preview {
+                max-width: 600px;
+                margin: 0 auto;
+            }
+        }
+
+        @media (max-width: 992px) {
+            .footer-content {
+                grid-template-columns: 1fr 1fr;
+                gap: 40px;
+            }
+
             .nav-links {
                 display: none;
             }
-            
+
+            .mobile-menu-toggle {
+                display: block;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 42px;
+            }
+
+            .hero-subtitle {
+                font-size: 18px;
+            }
+
             .cta-buttons {
                 flex-direction: column;
                 align-items: center;
             }
-            
+
             .btn {
                 width: 100%;
-                max-width: 280px;
+                max-width: 300px;
                 justify-content: center;
             }
+
+            .section-title {
+                font-size: 36px;
+            }
+
+            .hero-stats {
+                flex-direction: column;
+                gap: 30px;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cta-title {
+                font-size: 36px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .hero {
+                padding: 140px 0 60px;
+            }
+
+            .hero h1 {
+                font-size: 36px;
+            }
+
+            .section {
+                padding: 80px 0;
+            }
+
+            .footer-content {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-bottom {
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
+            }
+        }
+
+        /* Animation Classes */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .scale-in {
+            opacity: 0;
+            transform: scale(0.9);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .scale-in.visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Particle Background */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            background: var(--text-primary);
+            opacity: 0.03;
         }
     </style>
 </head>
 <body>
+    <!-- Particles Background -->
+    <div class="particles" id="particles"></div>
+
     <!-- Navigation -->
-    <nav class="navbar">
+    <nav class="navbar" id="navbar">
         <div class="container nav-content">
             <a href="/" class="logo">
                 <i class="fas fa-comment-alt"></i>
                 Talknote
             </a>
-            
+
             <div class="nav-links">
                 <a href="#features" class="nav-link">Features</a>
-                <a href="/join" class="nav-link">Login</a>
-                <a href="/join" class="nav-link">Register</a>
-                <button class="theme-toggle" id="themeToggle">
-                    <i class="fas fa-moon"></i>
-                </button>
+                <a href="#demo" class="nav-link">Demo</a>
+                <a href="#testimonials" class="nav-link">Testimonials</a>
+                <div class="nav-actions">
+                    <a href="/join" class="nav-button secondary">Login</a>
+                    <a href="/join" class="nav-button primary">Get Started</a>
+                    <button class="theme-toggle" id="themeToggle">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                </div>
             </div>
+
+            <button class="mobile-menu-toggle" id="mobileMenuToggle">
+                <i class="fas fa-bars"></i>
+            </button>
         </div>
     </nav>
 
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <div class="mobile-menu-header">
+            <div class="logo">
+                <i class="fas fa-comment-alt"></i>
+                Talknote
+            </div>
+            <button class="theme-toggle" id="mobileThemeToggle">
+                <i class="fas fa-moon"></i>
+            </button>
+        </div>
+        <div class="mobile-menu-links">
+            <a href="#features" class="mobile-menu-link" onclick="closeMobileMenu()">Features</a>
+            <a href="#demo" class="mobile-menu-link" onclick="closeMobileMenu()">Demo</a>
+            <a href="#testimonials" class="mobile-menu-link" onclick="closeMobileMenu()">Testimonials</a>
+            <a href="/join" class="mobile-menu-link" onclick="closeMobileMenu()">Login</a>
+            <a href="/join" class="mobile-menu-link" onclick="closeMobileMenu()">Get Started</a>
+        </div>
+    </div>
+
     <!-- Hero Section -->
-    <main>
-        <section class="hero">
-            <div class="container">
-                <h1>Think. Write. Share.</h1>
-                <p>A minimalist note-taking platform where clarity meets productivity. Write notes, share thoughts, and collaborate seamlessly in a distraction-free environment.</p>
-                <div class="cta-buttons">
-                    <button class="btn btn-primary" onclick="window.location.href='/login.html'">
-                        <i class="fas fa-sign-in-alt"></i>
-                        Get Started
-                    </button>
-                    <button class="btn btn-secondary" onclick="window.location.href='#features'">
+    <section class="hero" id="hero">
+        <div class="hero-bg">
+            <!-- Background pattern -->
+        </div>
+        <div class="container">
+            <h1 class="fade-in">Think. Write. Share.</h1>
+            <p class="hero-subtitle fade-in" style="transition-delay: 0.2s">
+                A minimalist note-taking platform where clarity meets productivity. 
+                Write notes, share thoughts, and collaborate seamlessly in a distraction-free environment.
+            </p>
+            <div class="cta-buttons fade-in" style="transition-delay: 0.4s">
+                <button class="btn btn-primary" onclick="window.location.href='/join'">
+                    <i class="fas fa-rocket"></i>
+                    Start Writing Free
+                </button>
+                <button class="btn btn-outline" onclick="scrollToDemo()">
+                    <i class="fas fa-play-circle"></i>
+                    Watch Demo
+                </button>
+            </div>
+            <div class="hero-stats fade-in" style="transition-delay: 0.6s">
+                <div class="stat">
+                    <div class="stat-number" id="notesCount">10K+</div>
+                    <div class="stat-label">Notes Created</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" id="usersCount">5K+</div>
+                    <div class="stat-label">Active Users</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" id="uptimeCount">99.9%</div>
+                    <div class="stat-label">Uptime</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" id="aiCount">60K+</div>
+                    <div class="stat-label">AI Processes</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="section" id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title fade-in">Why Choose Talknote</h2>
+                <p class="section-subtitle fade-in" style="transition-delay: 0.2s">
+                    Built for modern thinkers who value simplicity, speed, and collaboration.
+                </p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card scale-in">
+                    <div class="feature-icon">
                         <i class="fas fa-bolt"></i>
-                        Learn More
-                    </button>
+                    </div>
+                    <h3>Lightning Fast</h3>
+                    <p>Write and access notes instantly with our optimized platform. No lag, no waiting. Experience real-time sync across all your devices.</p>
+                    <a href="#" class="feature-link">
+                        Learn more
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
                 </div>
-            </div>
-        </section>
 
-        <!-- Features Section -->
-        <section id="features" class="features">
-            <div class="container">
-                <h2 class="section-title">Why Talknote</h2>
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-bolt"></i>
-                        </div>
-                        <h3>Lightning Fast</h3>
-                        <p>Write and access notes instantly with our optimized platform. No lag, no waiting.</p>
+                <div class="feature-card scale-in" style="transition-delay: 0.1s">
+                    <div class="feature-icon">
+                        <i class="fas fa-shield-alt"></i>
                     </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-shield-alt"></i>
-                        </div>
-                        <h3>Secure & Private</h3>
-                        <p>Your notes are encrypted and private by default. Share only what you want.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-robot"></i>
-                        </div>
-                        <h3>AI-Powered</h3>
-                        <p>Get smart suggestions, summaries, and improvements with integrated AI.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-comments"></i>
-                        </div>
-                        <h3>Collaborative</h3>
-                        <p>Share public notes and get feedback through comments and discussions.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-palette"></i>
-                        </div>
-                        <h3>Monochrome Focus</h3>
-                        <p>Designed for concentration with clean black and white themes that adapt to you.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="fas fa-sync-alt"></i>
-                        </div>
-                        <h3>Real-time Sync</h3>
-                        <p>Access your notes anywhere. Changes sync instantly across all your devices.</p>
-                    </div>
+                    <h3>Secure & Private</h3>
+                    <p>Your notes are encrypted and private by default. Share only what you want with end-to-end encryption for peace of mind.</p>
+                    <a href="#" class="feature-link">
+                        Security details
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
                 </div>
-            </div>
-        </section>
 
-        <!-- CTA Section -->
-        <section class="features">
-            <div class="container">
-                <div class="feature-card" style="text-align: center; max-width: 600px; margin: 0 auto;">
-                    <div class="feature-icon" style="margin: 0 auto 24px;">
-                        <i class="fas fa-rocket"></i>
+                <div class="feature-card scale-in" style="transition-delay: 0.2s">
+                    <div class="feature-icon">
+                        <i class="fas fa-robot"></i>
                     </div>
-                    <h2>Ready to Write?</h2>
-                    <p style="margin-bottom: 24px;">Join thousands who have already organized their thoughts with Talknote.</p>
-                    <button class="btn btn-primary" onclick="window.location.href='/join'" style="margin: 0 auto;">
-                        <i class="fas fa-user-plus"></i>
-                        Create Free Account
-                    </button>
+                    <h3>AI-Powered</h3>
+                    <p>Get smart suggestions, summaries, and improvements with integrated AI. Transform your notes with 60 daily AI credits.</p>
+                    <a href="#" class="feature-link">
+                        Explore AI features
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+
+                <div class="feature-card scale-in" style="transition-delay: 0.3s">
+                    <div class="feature-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <h3>Collaborative</h3>
+                    <p>Share public notes and get feedback through comments and discussions. Perfect for teams, students, and communities.</p>
+                    <a href="#" class="feature-link">
+                        See collaboration
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+
+                <div class="feature-card scale-in" style="transition-delay: 0.4s">
+                    <div class="feature-icon">
+                        <i class="fas fa-palette"></i>
+                    </div>
+                    <h3>Monochrome Focus</h3>
+                    <p>Designed for concentration with clean black and white themes that adapt to you. Reduce eye strain and boost productivity.</p>
+                    <a href="#" class="feature-link">
+                        Try themes
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+
+                <div class="feature-card scale-in" style="transition-delay: 0.5s">
+                    <div class="feature-icon">
+                        <i class="fas fa-sync-alt"></i>
+                    </div>
+                    <h3>Real-time Sync</h3>
+                    <p>Access your notes anywhere, anytime. Changes sync instantly across all your devices - desktop, mobile, and tablet.</p>
+                    <a href="#" class="feature-link">
+                        View sync status
+                        <i class="fas fa-arrow-right"></i>
+                    </a>
                 </div>
             </div>
-        </section>
-    </main>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section class="demo-section section" id="demo">
+        <div class="container">
+            <div class="demo-content">
+                <div class="demo-text fade-in">
+                    <h2>Experience the Editor</h2>
+                    <p>Our powerful editor combines simplicity with advanced features. Write, format, and organize your thoughts with ease.</p>
+                    <div style="margin-top: 32px;">
+                        <button class="btn btn-primary" onclick="window.location.href='/join'">
+                            <i class="fas fa-play"></i>
+                            Try Live Demo
+                        </button>
+                    </div>
+                </div>
+                <div class="demo-preview fade-in" style="transition-delay: 0.3s">
+                    <div class="demo-header">
+                        <div style="display: flex; gap: 8px;">
+                            <div style="width: 12px; height: 12px; background: var(--danger); border-radius: 50%;"></div>
+                            <div style="width: 12px; height: 12px; background: var(--warning); border-radius: 50%;"></div>
+                            <div style="width: 12px; height: 12px; background: var(--success); border-radius: 50%;"></div>
+                        </div>
+                        <div style="font-size: 14px; color: var(--text-secondary);">Talknote Editor</div>
+                    </div>
+                    <div class="demo-window">
+                        <div style="margin-bottom: 16px;">
+                            <div style="width: 60%; height: 8px; background: var(--bg-tertiary); border-radius: 4px; margin-bottom: 8px;"></div>
+                            <div style="width: 40%; height: 8px; background: var(--bg-tertiary); border-radius: 4px;"></div>
+                        </div>
+                        <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                            <div style="width: 24px; height: 24px; background: var(--bg-tertiary); border-radius: 4px;"></div>
+                            <div style="width: 24px; height: 24px; background: var(--bg-tertiary); border-radius: 4px;"></div>
+                            <div style="width: 24px; height: 24px; background: var(--bg-tertiary); border-radius: 4px;"></div>
+                        </div>
+                        <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 16px; min-height: 200px;">
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                <div style="width: 80%; height: 12px; background: var(--bg-secondary); border-radius: 4px;"></div>
+                                <div style="width: 90%; height: 12px; background: var(--bg-secondary); border-radius: 4px;"></div>
+                                <div style="width: 70%; height: 12px; background: var(--bg-secondary); border-radius: 4px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="testimonials section" id="testimonials">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title fade-in">Loved by Writers</h2>
+                <p class="section-subtitle fade-in" style="transition-delay: 0.2s">
+                    Join thousands of satisfied users who transformed their note-taking.
+                </p>
+            </div>
+            <div class="testimonial-grid">
+                <div class="testimonial-card fade-in">
+                    <div class="testimonial-content">
+                        "Talknote completely changed how I organize my research. The AI features save me hours every week!"
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">SR</div>
+                        <div class="author-info">
+                            <h4>Sarah Rodriguez</h4>
+                            <p>Research Scientist</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial-card fade-in" style="transition-delay: 0.1s">
+                    <div class="testimonial-content">
+                        "As a student, I love how simple yet powerful Talknote is. Sharing notes with classmates has never been easier."
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">MJ</div>
+                        <div class="author-info">
+                            <h4>Michael Johnson</h4>
+                            <p>Computer Science Student</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial-card fade-in" style="transition-delay: 0.2s">
+                    <div class="testimonial-content">
+                        "The clean design helps me focus. I've tried dozens of note apps, but Talknote is the only one that sticks."
+                    </div>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">EC</div>
+                        <div class="author-info">
+                            <h4>Emma Chen</h4>
+                            <p>Product Manager</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section" id="cta">
+        <div class="container">
+            <h2 class="cta-title fade-in">Ready to Write Your Story?</h2>
+            <p class="cta-subtitle fade-in" style="transition-delay: 0.2s">
+                Join thousands of thinkers, writers, and creators who have already organized their thoughts with Talknote.
+            </p>
+            <div class="cta-buttons fade-in" style="transition-delay: 0.4s">
+                <button class="btn btn-primary" onclick="window.location.href='/join'">
+                    <i class="fas fa-user-plus"></i>
+                    Create Free Account
+                </button>
+                <button class="btn btn-outline" onclick="window.location.href='/join?mode=login'">
+                    <i class="fas fa-sign-in-alt"></i>
+                    Sign In
+                </button>
+            </div>
+        </div>
+    </section>
 
     <!-- Footer -->
     <footer class="footer">
-        <div class="container footer-content">
-            <div class="copyright">
-                © 2025 Talknote. All rights reserved.
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <h3>
+                        <i class="fas fa-comment-alt"></i>
+                        Talknote
+                    </h3>
+                    <p>
+                        A minimalist note-taking platform for modern thinkers. 
+                        Write, organize, and share your thoughts in a distraction-free environment.
+                    </p>
+                    <div class="social-links">
+                        <a href="#" class="social-link">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="social-link">
+                            <i class="fab fa-github"></i>
+                        </a>
+                        <a href="#" class="social-link">
+                            <i class="fab fa-discord"></i>
+                        </a>
+                        <a href="#" class="social-link">
+                            <i class="fab fa-linkedin"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="footer-column">
+                    <h4>Product</h4>
+                    <div class="footer-links">
+                        <a href="#features" class="footer-link">Features</a>
+                        <a href="#demo" class="footer-link">Demo</a>
+                        <a href="#pricing" class="footer-link">Pricing</a>
+                        <a href="#updates" class="footer-link">Updates</a>
+                    </div>
+                </div>
+
+                <div class="footer-column">
+                    <h4>Resources</h4>
+                    <div class="footer-links">
+                        <a href="#" class="footer-link">Documentation</a>
+                        <a href="#" class="footer-link">Tutorials</a>
+                        <a href="#" class="footer-link">Blog</a>
+                        <a href="#" class="footer-link">Community</a>
+                    </div>
+                </div>
+
+                <div class="footer-column">
+                    <h4>Company</h4>
+                    <div class="footer-links">
+                        <a href="#" class="footer-link">About</a>
+                        <a href="#" class="footer-link">Careers</a>
+                        <a href="#" class="footer-link">Contact</a>
+                        <a href="#" class="footer-link">Press</a>
+                    </div>
+                </div>
             </div>
-            <div class="footer-links">
-                <a href="/" class="footer-link">Privacy</a>
-                <a href="/" class="footer-link">Terms</a>
-                <a href="/" class="footer-link">Contact</a>
-                <a href="https://github.com" class="footer-link">GitHub</a>
+
+            <div class="footer-bottom">
+                <div class="copyright">
+                    © 2025 Talknote. All rights reserved.
+                </div>
+                <div class="footer-legal">
+                    <a href="#" class="legal-link">Privacy Policy</a>
+                    <a href="#" class="legal-link">Terms of Service</a>
+                    <a href="#" class="legal-link">Cookie Policy</a>
+                </div>
             </div>
         </div>
     </footer>
@@ -473,6 +1315,238 @@
         document.addEventListener('DOMContentLoaded', () => {
             const themeManager = new ThemeManager();
             themeManager.init();
+            
+            // Initialize animations
+            initAnimations();
+            
+            // Initialize particles
+            initParticles();
+            
+            // Initialize scroll effects
+            initScrollEffects();
+            
+            // Initialize mobile menu
+            initMobileMenu();
+            
+            // Initialize counters
+            initCounters();
+        });
+
+        // Mobile menu functionality
+        function initMobileMenu() {
+            const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+            const mobileMenu = document.getElementById('mobileMenu');
+            const mobileThemeToggle = document.getElementById('mobileThemeToggle');
+
+            mobileMenuToggle.addEventListener('click', () => {
+                mobileMenu.classList.toggle('active');
+            });
+
+            mobileThemeToggle.addEventListener('click', () => {
+                const themeManager = new ThemeManager();
+                themeManager.cycleTheme();
+                updateThemeIcon(mobileThemeToggle);
+            });
+
+            // Close mobile menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!mobileMenu.contains(e.target) && !mobileMenuToggle.contains(e.target)) {
+                    mobileMenu.classList.remove('active');
+                }
+            });
+        }
+
+        function closeMobileMenu() {
+            document.getElementById('mobileMenu').classList.remove('active');
+        }
+
+        // Update theme icon
+        function updateThemeIcon(button) {
+            const theme = localStorage.getItem('talknote_theme') || 'auto';
+            const icon = button.querySelector('i');
+            
+            if (theme === 'auto') {
+                icon.className = window.matchMedia('(prefers-color-scheme: dark)').matches 
+                    ? 'fas fa-adjust' 
+                    : 'fas fa-circle-half-stroke';
+            } else if (theme === 'dark') {
+                icon.className = 'fas fa-moon';
+            } else {
+                icon.className = 'fas fa-sun';
+            }
+        }
+
+        // Scroll animations
+        function initAnimations() {
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                    }
+                });
+            }, observerOptions);
+
+            // Observe all animated elements
+            document.querySelectorAll('.fade-in, .scale-in').forEach(el => {
+                observer.observe(el);
+            });
+        }
+
+        // Scroll effects
+        function initScrollEffects() {
+            const navbar = document.getElementById('navbar');
+            
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 50) {
+                    navbar.classList.add('scrolled');
+                } else {
+                    navbar.classList.remove('scrolled');
+                }
+                
+                // Update active nav link
+                updateActiveNavLink();
+            });
+
+            // Smooth scroll for anchor links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    if (targetId === '#') return;
+                    
+                    const targetElement = document.querySelector(targetId);
+                    if (targetElement) {
+                        window.scrollTo({
+                            top: targetElement.offsetTop - 80,
+                            behavior: 'smooth'
+                        });
+                    }
+                });
+            });
+        }
+
+        function updateActiveNavLink() {
+            const sections = document.querySelectorAll('section[id]');
+            const scrollPosition = window.scrollY + 100;
+
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                const sectionId = section.getAttribute('id');
+
+                if (scrollPosition >= sectionTop && scrollPosition < sectionTop + sectionHeight) {
+                    document.querySelectorAll('.nav-link').forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === `#${sectionId}`) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            });
+        }
+
+        // Particle background
+        function initParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 30;
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                
+                // Random size between 1px and 4px
+                const size = Math.random() * 3 + 1;
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+                
+                // Random position
+                particle.style.left = `${Math.random() * 100}%`;
+                particle.style.top = `${Math.random() * 100}%`;
+                
+                // Random animation
+                const duration = Math.random() * 20 + 10;
+                particle.style.animation = `float ${duration}s infinite ease-in-out`;
+                
+                particlesContainer.appendChild(particle);
+            }
+
+            // Add CSS for floating animation
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes float {
+                    0%, 100% { transform: translate(0, 0); }
+                    25% { transform: translate(${Math.random() * 20 - 10}px, ${Math.random() * 20 - 10}px); }
+                    50% { transform: translate(${Math.random() * 30 - 15}px, ${Math.random() * 30 - 15}px); }
+                    75% { transform: translate(${Math.random() * 20 - 10}px, ${Math.random() * 20 - 10}px); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Animated counters
+        function initCounters() {
+            const counters = {
+                notesCount: { target: 10000, duration: 2000 },
+                usersCount: { target: 5000, duration: 2000 },
+                uptimeCount: { target: 99.9, duration: 1500 },
+                aiCount: { target: 60000, duration: 2500 }
+            };
+
+            Object.keys(counters).forEach(id => {
+                const counter = document.getElementById(id);
+                if (!counter) return;
+
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            animateCounter(counter, counters[id].target, counters[id].duration);
+                            observer.unobserve(entry.target);
+                        }
+                    });
+                }, { threshold: 0.5 });
+
+                observer.observe(counter);
+            });
+        }
+
+        function animateCounter(element, target, duration) {
+            const start = 0;
+            const increment = target / (duration / 16); // 60fps
+            let current = start;
+
+            const timer = setInterval(() => {
+                current += increment;
+                if (current >= target) {
+                    element.textContent = target.toLocaleString() + (target === 99.9 ? '%' : '+');
+                    clearInterval(timer);
+                } else {
+                    element.textContent = Math.floor(current).toLocaleString() + (target === 99.9 ? '%' : '+');
+                }
+            }, 16);
+        }
+
+        // Scroll to demo
+        function scrollToDemo() {
+            const demoSection = document.getElementById('demo');
+            if (demoSection) {
+                window.scrollTo({
+                    top: demoSection.offsetTop - 80,
+                    behavior: 'smooth'
+                });
+            }
+        }
+
+        // Add active class to nav links
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function() {
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+            });
         });
     </script>
 </body>
