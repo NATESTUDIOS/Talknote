@@ -1,9 +1,22 @@
 // api/notebook-ai.js
 import { db } from "../utils/firebase.js";
 
-// Gemini REST API configuration
+// ==================== CONFIGURATION ====================
+// CHANGE THESE VALUES AS NEEDED
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+// Model Configuration
+const HEADING_MODEL = "gemini-1.5-flash";    // For title/summary generation (fast & cheap)
+const PROCESS_MODEL = "gemini-1.5-pro";      // For command processing (more capable)
+
+// Usage Limits (per user)
+const DAILY_AI_LIMIT = 60;                   // Max 60 AI calls per user per day
+const MAX_CONTENT_LENGTH = 10000;            // Max characters per request
+
+// Token Limits
+const HEADING_MAX_TOKENS = 500;
+const PROCESS_MAX_TOKENS = 2000;
+// ======================================================
 
 // Helper to validate user existence
 async function validateUser(userId) {
@@ -11,13 +24,57 @@ async function validateUser(userId) {
   return snapshot.exists();
 }
 
-// Call Gemini REST API
-async function callGemini(prompt, maxTokens = 1000) {
+// Helper to check and update user usage
+async function checkAndUpdateUsage(userId) {
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const usageKey = `usage/${userId}/${today}`;
+  
+  const snapshot = await db.ref(usageKey).once('value');
+  const currentUsage = snapshot.val() || 0;
+  
+  if (currentUsage >= DAILY_AI_LIMIT) {
+    return {
+      allowed: false,
+      remaining: 0,
+      limit: DAILY_AI_LIMIT
+    };
+  }
+  
+  // Increment usage
+  await db.ref(usageKey).set(currentUsage + 1);
+  
+  return {
+    allowed: true,
+    remaining: DAILY_AI_LIMIT - (currentUsage + 1),
+    limit: DAILY_AI_LIMIT
+  };
+}
+
+// Get user's usage stats
+async function getUserUsage(userId) {
+  const today = new Date().toISOString().split('T')[0];
+  const usageKey = `usage/${userId}/${today}`;
+  
+  const snapshot = await db.ref(usageKey).once('value');
+  const currentUsage = snapshot.val() || 0;
+  
+  return {
+    used: currentUsage,
+    remaining: Math.max(0, DAILY_AI_LIMIT - currentUsage),
+    limit: DAILY_AI_LIMIT,
+    reset_date: today
+  };
+}
+
+// Call Gemini REST API with specific model
+async function callGemini(prompt, model, maxTokens) {
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY environment variable is not set');
   }
 
-  const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  
+  const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -49,7 +106,7 @@ async function callGemini(prompt, maxTokens = 1000) {
   throw new Error('Invalid response from Gemini API');
 }
 
-// Generate heading and summary
+// Generate heading and summary (uses HEADING_MODEL)
 async function generateHeadingSummary(content, type = 'note') {
   const prompt = `Generate a title and summary for this ${type}.
 
@@ -62,7 +119,7 @@ SUMMARY: [1-2 sentence summary]
 
 Make the title catchy and relevant. Make the summary concise and capture the essence.`;
 
-  const result = await callGemini(prompt, 500);
+  const result = await callGemini(prompt, HEADING_MODEL, HEADING_MAX_TOKENS);
   
   // Parse response
   const titleMatch = result.match(/TITLE:\s*(.+?)(?:\n|$)/i);
@@ -75,7 +132,7 @@ Make the title catchy and relevant. Make the summary concise and capture the ess
 }
 
 // Pre-defined commands
-const COMMANDS = {
+const PREDEFINED_COMMANDS = {
   // Content enhancement
   'summarize': 'Provide a concise 3-5 bullet point summary of the key points.',
   'improve': 'Fix grammar, spelling, and improve readability while keeping the original meaning.',
@@ -107,24 +164,25 @@ const COMMANDS = {
   'tl-dr': 'Create a one-sentence TL;DR summary.'
 };
 
-// Process content with command
-async function processCommand(content, command, type = 'note', customPrompt = null) {
+// Process content with command (uses PROCESS_MODEL)
+async function processContent(content, command, type = 'note') {
   let prompt;
   
-  if (customPrompt) {
-    prompt = `${customPrompt}\n\nContent:\n${content}`;
-  } else if (COMMANDS[command]) {
-    prompt = `${COMMANDS[command]}\n\nContent:\n${content}`;
+  if (PREDEFINED_COMMANDS[command]) {
+    // Use predefined command
+    prompt = `${PREDEFINED_COMMANDS[command]}\n\nContent:\n${content}`;
   } else {
-    throw new Error(`Unknown command: ${command}. Available commands: ${Object.keys(COMMANDS).join(', ')}`);
+    // Use custom command (any text passed as command)
+    prompt = `${command}\n\nContent:\n${content}`;
   }
 
-  const result = await callGemini(prompt);
+  const result = await callGemini(prompt, PROCESS_MODEL, PROCESS_MAX_TOKENS);
   
   return {
     result,
-    command: customPrompt ? 'custom' : command,
-    description: customPrompt ? `Custom: ${customPrompt}` : COMMANDS[command]
+    command: command,
+    isPredefined: PREDEFINED_COMMANDS.hasOwnProperty(command),
+    description: PREDEFINED_COMMANDS[command] || `Custom instruction: ${command}`
   };
 }
 
@@ -153,7 +211,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { action, user_id, content, type = 'note', command, custom_prompt } = req.body;
+    const { action, user_id, content, type = 'note', command } = req.body;
 
     // Validate required fields
     if (!user_id) {
@@ -172,66 +230,165 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!content) {
-      return res.status(400).json({
-        success: false,
-        error: 'content is required'
-      });
-    }
-
-    // Content length limit
-    if (content.length > 10000) {
-      return res.status(400).json({
-        success: false,
-        error: 'Content too long (max 10000 characters)'
-      });
-    }
-
     // Route based on action
     switch (action) {
       case 'heading':
         // Generate heading and summary
+        if (!content) {
+          return res.status(400).json({
+            success: false,
+            error: 'content is required for heading generation'
+          });
+        }
+
+        // Check usage limit
+        const headingUsage = await checkAndUpdateUsage(user_id);
+        if (!headingUsage.allowed) {
+          return res.status(429).json({
+            success: false,
+            error: 'Daily AI usage limit exceeded',
+            limit: headingUsage.limit,
+            remaining: 0
+          });
+        }
+
+        // Content length limit
+        if (content.length > MAX_CONTENT_LENGTH) {
+          return res.status(400).json({
+            success: false,
+            error: `Content too long (max ${MAX_CONTENT_LENGTH} characters)`
+          });
+        }
+
         const headingResult = await generateHeadingSummary(content, type);
         return res.status(200).json({
           success: true,
           title: headingResult.title,
           summary: headingResult.summary,
           type,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          model: HEADING_MODEL,
+          usage: {
+            used: headingUsage.limit - headingUsage.remaining,
+            remaining: headingUsage.remaining,
+            limit: headingUsage.limit
+          }
         });
 
       case 'process':
         // Process with command
-        if (!command && !custom_prompt) {
+        if (!content) {
           return res.status(400).json({
             success: false,
-            error: 'Either command or custom_prompt is required'
+            error: 'content is required'
           });
         }
 
-        const processResult = await processCommand(content, command, type, custom_prompt);
+        if (!command) {
+          return res.status(400).json({
+            success: false,
+            error: 'command is required'
+          });
+        }
+
+        // Check usage limit
+        const processUsage = await checkAndUpdateUsage(user_id);
+        if (!processUsage.allowed) {
+          return res.status(429).json({
+            success: false,
+            error: 'Daily AI usage limit exceeded',
+            limit: processUsage.limit,
+            remaining: 0
+          });
+        }
+
+        // Content length limit
+        if (content.length > MAX_CONTENT_LENGTH) {
+          return res.status(400).json({
+            success: false,
+            error: `Content too long (max ${MAX_CONTENT_LENGTH} characters)`
+          });
+        }
+
+        const processResult = await processContent(content, command, type);
         return res.status(200).json({
           success: true,
           result: processResult.result,
           command: processResult.command,
+          is_predefined: processResult.isPredefined,
           description: processResult.description,
           type,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          model: PROCESS_MODEL,
+          usage: {
+            used: processUsage.limit - processUsage.remaining,
+            remaining: processUsage.remaining,
+            limit: processUsage.limit
+          }
         });
 
       case 'commands':
-        // List available commands
+        // List available commands (doesn't count toward usage)
+        if (!user_id) {
+          return res.status(400).json({
+            success: false,
+            error: 'user_id is required'
+          });
+        }
+
+        const commandsList = Object.entries(PREDEFINED_COMMANDS).map(([name, description]) => ({
+          name,
+          description: description.split('.')[0] + '.',
+          example: `Use "command": "${name}" in your request`
+        }));
+        
+        const userUsage = await getUserUsage(user_id);
+        
         return res.status(200).json({
           success: true,
-          commands: Object.keys(COMMANDS),
-          total: Object.keys(COMMANDS).length,
+          commands: commandsList,
+          total: commandsList.length,
+          timestamp: Date.now(),
+          usage: userUsage
+        });
+
+      case 'usage':
+        // Get user usage stats (doesn't count toward usage)
+        if (!user_id) {
+          return res.status(400).json({
+            success: false,
+            error: 'user_id is required'
+          });
+        }
+
+        const usageStats = await getUserUsage(user_id);
+        return res.status(200).json({
+          success: true,
+          usage: usageStats,
+          timestamp: Date.now()
+        });
+
+      case 'config':
+        // Return current configuration (read-only, doesn't count toward usage)
+        return res.status(200).json({
+          success: true,
+          config: {
+            heading_model: HEADING_MODEL,
+            process_model: PROCESS_MODEL,
+            max_content_length: MAX_CONTENT_LENGTH,
+            daily_ai_limit: DAILY_AI_LIMIT,
+            heading_max_tokens: HEADING_MAX_TOKENS,
+            process_max_tokens: PROCESS_MAX_TOKENS,
+            available_actions: ['heading', 'process', 'commands', 'usage', 'config'],
+            total_predefined_commands: Object.keys(PREDEFINED_COMMANDS).length
+          },
           timestamp: Date.now()
         });
 
       default:
         return res.status(400).json({
           success: false,
-          error: 'Valid action required: heading, process, or commands'
+          error: 'Valid action required: heading, process, commands, usage, or config'
         });
     }
 
@@ -250,6 +407,13 @@ export default async function handler(req, res) {
       return res.status(400).json({
         success: false,
         error: 'Content could not be processed due to safety policies'
+      });
+    }
+
+    if (error.message.includes('model not found') || error.message.includes('invalid model')) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid model configuration. Please check the model names.`
       });
     }
 
