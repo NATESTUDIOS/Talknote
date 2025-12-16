@@ -85,11 +85,112 @@
             line-height: 1.3;
         }
 
-        .notebox p {
+        .notebox .note-content {
             font-size: 15px;
             line-height: 1.75;
-            white-space: pre-line;
+            white-space: pre-wrap;
             opacity: 0.95;
+        }
+
+        /* HTML Content Styling */
+        .note-content * {
+            margin-bottom: 16px;
+        }
+
+        .note-content h1, 
+        .note-content h2, 
+        .note-content h3 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-weight: 700;
+            opacity: 0.95;
+        }
+
+        .note-content h1 { font-size: 20px; }
+        .note-content h2 { font-size: 18px; }
+        .note-content h3 { font-size: 16px; }
+
+        .note-content p {
+            margin-bottom: 16px;
+            line-height: 1.7;
+        }
+
+        .note-content ul, 
+        .note-content ol {
+            margin-left: 20px;
+            margin-bottom: 16px;
+        }
+
+        .note-content li {
+            margin-bottom: 8px;
+        }
+
+        .note-content a {
+            color: #4CAF50;
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .note-content a:hover {
+            border-bottom-color: #4CAF50;
+        }
+
+        .note-content code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+        }
+
+        .note-content pre {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .note-content blockquote {
+            border-left: 3px solid rgba(255, 255, 255, 0.3);
+            padding-left: 16px;
+            margin: 20px 0;
+            opacity: 0.8;
+            font-style: italic;
+        }
+
+        .note-content hr {
+            border: none;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.15);
+            margin: 24px 0;
+        }
+
+        .note-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .note-content th, 
+        .note-content td {
+            padding: 10px 14px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            text-align: left;
+        }
+
+        .note-content th {
+            background: rgba(255, 255, 255, 0.08);
+            font-weight: 600;
+        }
+
+        .note-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+            margin: 20px 0;
         }
 
         .comments-section {
@@ -311,6 +412,26 @@
         .back-button:hover {
             background: rgba(255, 255, 255, 0.15);
         }
+
+        /* Copy content button */
+        .copy-content-button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            border-radius: 8px;
+            color: #4CAF50;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: none;
+        }
+
+        .copy-content-button:hover {
+            background: rgba(76, 175, 80, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -320,6 +441,7 @@
             <div class="icons">
                 <i class="fa-solid fa-house" onclick="window.location.href='/'"></i>
                 <i class="fa-solid fa-share-alt" onclick="shareNote()"></i>
+                <i class="fa-solid fa-copy" onclick="copyNoteContent()" title="Copy content"></i>
             </div>
         </header>
 
@@ -354,7 +476,7 @@
             currentNoteId = getNoteIdFromUrl();
             const noteContainer = document.getElementById('noteContainer');
             const commentsSection = document.getElementById('commentsSection');
-            
+
             if (!currentNoteId) {
                 showError('Invalid note URL');
                 return;
@@ -364,13 +486,13 @@
                 // Load note with comments
                 const apiUrl = `/api/notes?note_id=${encodeURIComponent(currentNoteId)}&with_comments=true`;
                 const response = await fetch(apiUrl);
-                
+
                 if (!response.ok) {
                     throw new Error(`API error: ${response.status}`);
                 }
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     displayNote(data.note);
                     if (data.note.public) {
@@ -396,6 +518,9 @@
                 minute: '2-digit'
             });
 
+            // Sanitize HTML content for security
+            const sanitizedContent = sanitizeHTML(note.text || 'No content');
+
             noteContainer.innerHTML = `
                 <div class="note-meta">
                     <i class="fa-solid fa-${note.public ? 'globe' : 'lock'}"></i>
@@ -404,7 +529,9 @@
 
                 <h1>${escapeHtml(note.title || 'Untitled Note')}</h1>
 
-                <p>${escapeHtml(note.text || 'No content')}</p>
+                <div class="note-content">
+                    ${sanitizedContent}
+                </div>
 
                 <div class="share-section">
                     <button class="share-button" onclick="shareNote()">
@@ -414,6 +541,10 @@
                     <button class="share-button" onclick="copyNoteLink()">
                         <i class="fa-solid fa-copy"></i>
                         Copy Link
+                    </button>
+                    <button class="copy-content-button" onclick="copyNoteContent()">
+                        <i class="fa-solid fa-code"></i>
+                        Copy HTML
                     </button>
                     <span id="copyMessage" class="copy-message"></span>
                 </div>
@@ -433,9 +564,67 @@
             }
         }
 
+        // Sanitize HTML to prevent XSS attacks
+        function sanitizeHTML(html) {
+            if (!html) return '';
+            
+            // Create a temporary div to parse the HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            
+            // Remove dangerous elements
+            const dangerousTags = ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'style', 'form', 'input', 'button', 'select', 'textarea'];
+            dangerousTags.forEach(tag => {
+                const elements = tempDiv.querySelectorAll(tag);
+                elements.forEach(el => el.remove());
+            });
+            
+            // Remove dangerous attributes
+            const allElements = tempDiv.querySelectorAll('*');
+            allElements.forEach(el => {
+                // Remove event handlers and dangerous attributes
+                const attrs = el.attributes;
+                for (let i = attrs.length - 1; i >= 0; i--) {
+                    const attrName = attrs[i].name.toLowerCase();
+                    if (attrName.startsWith('on') || 
+                        attrName === 'href' || 
+                        attrName === 'src' ||
+                        attrName === 'style' ||
+                        attrName === 'class') {
+                        el.removeAttribute(attrName);
+                    }
+                }
+                
+                // Only allow safe HTML tags with basic attributes
+                if (el.tagName === 'A') {
+                    const href = el.getAttribute('href');
+                    if (href && (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('/') || href.startsWith('#') || href.startsWith('mailto:'))) {
+                        el.setAttribute('href', href);
+                        el.setAttribute('target', '_blank');
+                        el.setAttribute('rel', 'noopener noreferrer');
+                    } else {
+                        el.removeAttribute('href');
+                    }
+                }
+                
+                if (el.tagName === 'IMG') {
+                    const src = el.getAttribute('src');
+                    if (src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/'))) {
+                        el.setAttribute('src', src);
+                        el.setAttribute('alt', 'Image');
+                        el.setAttribute('loading', 'lazy');
+                    } else {
+                        el.remove();
+                    }
+                }
+            });
+            
+            return tempDiv.innerHTML;
+        }
+
         function displayComments(comments) {
             const commentsSection = document.getElementById('commentsSection');
-            
+
             commentsSection.innerHTML = `
                 <div class="comments-header">
                     <h2><i class="fa-solid fa-comments"></i> Comments <span class="comment-count">${comments.length}</span></h2>
@@ -497,10 +686,10 @@
             const commentInput = document.getElementById('commentInput');
             const commentNameInput = document.getElementById('commentNameInput');
             const submitBtn = document.getElementById('submitCommentBtn');
-            
+
             const text = commentInput.value.trim();
             const name = commentNameInput.value.trim() || 'Anonymous';
-            
+
             if (!text) {
                 alert('Please enter a comment');
                 return;
@@ -528,13 +717,13 @@
                 if (data.success) {
                     // Clear input
                     commentInput.value = '';
-                    
+
                     // Save name for future
                     saveCommentName(name);
-                    
+
                     // Reload comments
                     await loadComments();
-                    
+
                     // Show success message
                     showMessage('Comment posted successfully!');
                 } else {
@@ -554,11 +743,11 @@
             try {
                 const response = await fetch(`/api/notes?action=get_comments&note_id=${currentNoteId}`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const commentsList = document.getElementById('commentsList');
                     const commentCount = document.querySelector('.comment-count');
-                    
+
                     if (commentsList) {
                         if (data.comments.length > 0) {
                             commentsList.innerHTML = data.comments.map(comment => renderComment(comment)).join('');
@@ -566,7 +755,7 @@
                             commentsList.innerHTML = '<div class="no-comments">No comments yet. Be the first to comment!</div>';
                         }
                     }
-                    
+
                     if (commentCount) {
                         commentCount.textContent = data.comments.length;
                     }
@@ -598,7 +787,7 @@
             messageEl.textContent = message;
             messageEl.style.color = '#4CAF50';
             messageEl.style.marginTop = '10px';
-            
+
             const submitBtn = document.getElementById('submitCommentBtn');
             if (submitBtn) {
                 submitBtn.parentNode.appendChild(messageEl);
@@ -615,9 +804,9 @@
 
         function shareNote() {
             if (!currentNoteId) return;
-            
+
             const shareUrl = window.location.href;
-            
+
             if (navigator.share) {
                 navigator.share({
                     title: 'Talknote - Shared Note',
@@ -642,9 +831,35 @@
             });
         }
 
+        function copyNoteContent() {
+            const noteContent = document.querySelector('.note-content');
+            if (!noteContent) return;
+            
+            // Get the HTML content
+            const htmlContent = noteContent.innerHTML;
+            
+            // Create a temporary textarea to copy
+            const textarea = document.createElement('textarea');
+            textarea.value = htmlContent;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            
+            // Show success message
+            const message = document.getElementById('copyMessage');
+            if (message) {
+                message.textContent = 'HTML content copied!';
+                message.style.color = '#4CAF50';
+                setTimeout(() => {
+                    message.textContent = '';
+                }, 3000);
+            }
+        }
+
         // Load note when page loads
         document.addEventListener('DOMContentLoaded', loadNote);
-        
+
         // Also handle browser back/forward
         window.addEventListener('popstate', loadNote);
     </script>
