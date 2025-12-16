@@ -7,11 +7,11 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Model Configuration
 const HEADING_MODEL = "gemini-2.5-flash-lite";    // For title/summary generation (fast & cheap)
-const PROCESS_MODEL = "gemini-2.5-flash";      // For command processing (more capable)
+const PROCESS_MODEL = "gemini-2.5-flash";         // For command processing (more capable)
 
 // Usage Limits (per user)
-const DAILY_AI_LIMIT = 60;                   // Max 60 AI calls per user per day
-const MAX_CONTENT_LENGTH = 10000;            // Max characters per request
+const DAILY_AI_LIMIT = 60;                        // Max 60 AI calls per user per day
+const MAX_CONTENT_LENGTH = 10000;                 // Max characters per request
 
 // Token Limits
 const HEADING_MAX_TOKENS = 500;
@@ -28,10 +28,10 @@ async function validateUser(userId) {
 async function checkAndUpdateUsage(userId) {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const usageKey = `usage/${userId}/${today}`;
-  
+
   const snapshot = await db.ref(usageKey).once('value');
   const currentUsage = snapshot.val() || 0;
-  
+
   if (currentUsage >= DAILY_AI_LIMIT) {
     return {
       allowed: false,
@@ -39,10 +39,10 @@ async function checkAndUpdateUsage(userId) {
       limit: DAILY_AI_LIMIT
     };
   }
-  
+
   // Increment usage
   await db.ref(usageKey).set(currentUsage + 1);
-  
+
   return {
     allowed: true,
     remaining: DAILY_AI_LIMIT - (currentUsage + 1),
@@ -54,10 +54,10 @@ async function checkAndUpdateUsage(userId) {
 async function getUserUsage(userId) {
   const today = new Date().toISOString().split('T')[0];
   const usageKey = `usage/${userId}/${today}`;
-  
+
   const snapshot = await db.ref(usageKey).once('value');
   const currentUsage = snapshot.val() || 0;
-  
+
   return {
     used: currentUsage,
     remaining: Math.max(0, DAILY_AI_LIMIT - currentUsage),
@@ -73,7 +73,7 @@ async function callGemini(prompt, model, maxTokens) {
   }
 
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-  
+
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
@@ -98,11 +98,11 @@ async function callGemini(prompt, model, maxTokens) {
   }
 
   const data = await response.json();
-  
+
   if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
     return data.candidates[0].content.parts[0].text;
   }
-  
+
   throw new Error('Invalid response from Gemini API');
 }
 
@@ -120,18 +120,18 @@ SUMMARY: [1-2 sentence summary]
 Make the title catchy and relevant. Make the summary concise and capture the essence.`;
 
   const result = await callGemini(prompt, HEADING_MODEL, HEADING_MAX_TOKENS);
-  
+
   // Parse response
   const titleMatch = result.match(/TITLE:\s*(.+?)(?:\n|$)/i);
   const summaryMatch = result.match(/SUMMARY:\s*(.+)/i);
-  
+
   return {
     title: titleMatch ? titleMatch[1].trim() : 'Untitled',
     summary: summaryMatch ? summaryMatch[1].trim() : 'No summary available.'
   };
 }
 
-// Pre-defined commands
+// Pre-defined commands with structured output instructions
 const PREDEFINED_COMMANDS = {
   // Content enhancement
   'summarize': 'Provide a concise 3-5 bullet point summary of the key points.',
@@ -139,50 +139,106 @@ const PREDEFINED_COMMANDS = {
   'simplify': 'Make this content simpler and easier to understand.',
   'expand': 'Add more details, examples, and explanations.',
   'organize': 'Reorganize with clear sections and logical flow.',
-  
+
   // Analysis
   'analyze': 'Identify key themes, insights, and main ideas.',
   'action-items': 'Extract actionable tasks and to-do items.',
   'questions': 'Generate 5 relevant questions based on this content.',
   'keywords': 'Extract 5-7 key keywords or phrases.',
-  
+
   // Formatting
   'bullet-points': 'Convert into clear bullet points.',
   'markdown': 'Format as clean markdown with proper headings.',
   'checklist': 'Convert into a step-by-step checklist.',
-  
+
   // Learning
   'explain': 'Explain the concepts in simple terms.',
   'study-guide': 'Create a study guide with key concepts.',
-  
+
   // Creative
   'brainstorm': 'Brainstorm related ideas and expansions.',
   'rewrite': 'Rewrite in a different style while keeping the core message.',
-  
+
   // Utility
   'translate': 'Translate to clear, natural English.',
   'tl-dr': 'Create a one-sentence TL;DR summary.'
 };
 
-// Process content with command (uses PROCESS_MODEL)
+// Command descriptions for structured responses
+const COMMAND_DESCRIPTIONS = {
+  'summarize': 'Created a summary of the key points',
+  'improve': 'Improved grammar, spelling, and readability',
+  'simplify': 'Simplified the content for better understanding',
+  'expand': 'Expanded with additional details and examples',
+  'organize': 'Reorganized content with clear structure',
+  'analyze': 'Analyzed key themes and insights',
+  'action-items': 'Extracted actionable tasks',
+  'questions': 'Generated relevant questions',
+  'keywords': 'Extracted key keywords and phrases',
+  'bullet-points': 'Converted to bullet point format',
+  'markdown': 'Formatted as markdown',
+  'checklist': 'Converted to checklist format',
+  'explain': 'Explained concepts in simple terms',
+  'study-guide': 'Created a study guide',
+  'brainstorm': 'Brainstormed related ideas',
+  'rewrite': 'Rewrote in a different style',
+  'translate': 'Translated to natural English',
+  'tl-dr': 'Created a TL;DR summary'
+};
+
+// Process content with command (uses PROCESS_MODEL) - returns structured output
 async function processContent(content, command, type = 'note') {
   let prompt;
+  let isPredefined = PREDEFINED_COMMANDS.hasOwnProperty(command);
   
-  if (PREDEFINED_COMMANDS[command]) {
-    // Use predefined command
-    prompt = `${PREDEFINED_COMMANDS[command]}\n\nContent:\n${content}`;
+  if (isPredefined) {
+    // Use predefined command with structured output instructions
+    prompt = `Process this ${type} note with the following instruction: ${PREDEFINED_COMMANDS[command]}
+
+CONTENT TO PROCESS:
+"""
+${content}
+"""
+
+FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
+EXPLANATION: [Brief explanation of what you did, 1-2 sentences]
+RESULT: [The processed result here]
+
+Important:
+- Keep EXPLANATION concise
+- Make RESULT the main processed content
+- Don't include any other text or formatting in the response`;
   } else {
-    // Use custom command (any text passed as command)
-    prompt = `${command}\n\nContent:\n${content}`;
+    // Use custom command with structured output instructions
+    prompt = `Process this ${type} note with the following custom instruction: ${command}
+
+CONTENT TO PROCESS:
+"""
+${content}
+"""
+
+FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
+EXPLANATION: [Brief explanation of what you did based on the instruction, 1-2 sentences]
+RESULT: [The processed result here]
+
+Important:
+- Keep EXPLANATION concise and based on the instruction
+- Make RESULT the main processed content
+- Don't include any other text or formatting in the response`;
   }
 
   const result = await callGemini(prompt, PROCESS_MODEL, PROCESS_MAX_TOKENS);
-  
+
+  // Parse structured response
+  const explanationMatch = result.match(/EXPLANATION:\s*(.+?)(?=\nRESULT:|\n\n|$)/is);
+  const resultMatch = result.match(/RESULT:\s*(.+)/is);
+
   return {
-    result,
+    explanation: explanationMatch ? explanationMatch[1].trim() : 'Processed the content as requested.',
+    result: resultMatch ? resultMatch[1].trim() : result,
     command: command,
-    isPredefined: PREDEFINED_COMMANDS.hasOwnProperty(command),
-    description: PREDEFINED_COMMANDS[command] || `Custom instruction: ${command}`
+    isPredefined: isPredefined,
+    description: isPredefined ? COMMAND_DESCRIPTIONS[command] || PREDEFINED_COMMANDS[command] : `Custom: ${command}`
   };
 }
 
@@ -263,8 +319,10 @@ export default async function handler(req, res) {
         const headingResult = await generateHeadingSummary(content, type);
         return res.status(200).json({
           success: true,
-          title: headingResult.title,
-          summary: headingResult.summary,
+          data: {
+            title: headingResult.title,
+            summary: headingResult.summary
+          },
           type,
           timestamp: Date.now(),
           model: HEADING_MODEL,
@@ -276,7 +334,7 @@ export default async function handler(req, res) {
         });
 
       case 'process':
-        // Process with command
+        // Process with command (returns structured output)
         if (!content) {
           return res.status(400).json({
             success: false,
@@ -313,7 +371,10 @@ export default async function handler(req, res) {
         const processResult = await processContent(content, command, type);
         return res.status(200).json({
           success: true,
-          result: processResult.result,
+          data: {
+            explanation: processResult.explanation,
+            result: processResult.result
+          },
           command: processResult.command,
           is_predefined: processResult.isPredefined,
           description: processResult.description,
@@ -338,16 +399,19 @@ export default async function handler(req, res) {
 
         const commandsList = Object.entries(PREDEFINED_COMMANDS).map(([name, description]) => ({
           name,
-          description: description.split('.')[0] + '.',
+          description: COMMAND_DESCRIPTIONS[name] || description.split('.')[0] + '.',
+          prompt: description,
           example: `Use "command": "${name}" in your request`
         }));
-        
+
         const userUsage = await getUserUsage(user_id);
-        
+
         return res.status(200).json({
           success: true,
-          commands: commandsList,
-          total: commandsList.length,
+          data: {
+            commands: commandsList,
+            total: commandsList.length
+          },
           timestamp: Date.now(),
           usage: userUsage
         });
@@ -364,7 +428,9 @@ export default async function handler(req, res) {
         const usageStats = await getUserUsage(user_id);
         return res.status(200).json({
           success: true,
-          usage: usageStats,
+          data: {
+            usage: usageStats
+          },
           timestamp: Date.now()
         });
 
@@ -372,15 +438,21 @@ export default async function handler(req, res) {
         // Return current configuration (read-only, doesn't count toward usage)
         return res.status(200).json({
           success: true,
-          config: {
-            heading_model: HEADING_MODEL,
-            process_model: PROCESS_MODEL,
-            max_content_length: MAX_CONTENT_LENGTH,
-            daily_ai_limit: DAILY_AI_LIMIT,
-            heading_max_tokens: HEADING_MAX_TOKENS,
-            process_max_tokens: PROCESS_MAX_TOKENS,
-            available_actions: ['heading', 'process', 'commands', 'usage', 'config'],
-            total_predefined_commands: Object.keys(PREDEFINED_COMMANDS).length
+          data: {
+            config: {
+              heading_model: HEADING_MODEL,
+              process_model: PROCESS_MODEL,
+              max_content_length: MAX_CONTENT_LENGTH,
+              daily_ai_limit: DAILY_AI_LIMIT,
+              heading_max_tokens: HEADING_MAX_TOKENS,
+              process_max_tokens: PROCESS_MAX_TOKENS,
+              available_actions: ['heading', 'process', 'commands', 'usage', 'config'],
+              total_predefined_commands: Object.keys(PREDEFINED_COMMANDS).length,
+              response_format: {
+                heading: { title: 'string', summary: 'string' },
+                process: { explanation: 'string', result: 'string' }
+              }
+            }
           },
           timestamp: Date.now()
         });
