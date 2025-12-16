@@ -6,8 +6,8 @@ import { db } from "../utils/firebase.js";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Model Configuration
-const HEADING_MODEL = "gemini-1.5-flash";    // For title/summary generation (fast & cheap)
-const PROCESS_MODEL = "gemini-1.5-pro";      // For command processing (more capable)
+const HEADING_MODEL = "gemini-2.5-flash-lite";    // For title/summary generation (fast & cheap)
+const PROCESS_MODEL = "gemini-2.5-flash";      // For command processing (more capable)
 
 // Usage Limits (per user)
 const DAILY_AI_LIMIT = 60;                   // Max 60 AI calls per user per day
