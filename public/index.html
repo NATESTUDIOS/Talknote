@@ -1,158 +1,479 @@
-
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talknote - Your Notes App</title>
+    <title>Talknote | Modern Note Taking</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
         body {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #000, #1a1a1a, #000);
-            padding: 18px;
-            color: #f5f5f5;
+           min-height: 100vh;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
+        :root {
+            /* Light theme */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f8f8;
+            --bg-tertiary: #f0f0f0;
+            --bg-elevated: #ffffff;
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --text-tertiary: #999999;
+            --border: #e0e0e0;
+            --accent: #000000;
+            --accent-hover: #333333;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+            --card-bg: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #000000;
+            --bg-secondary: #111111;
+            --bg-tertiary: #222222;
+            --bg-elevated: #1a1a1a;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --text-tertiary: #777777;
+            --border: #333333;
+            --accent: #ffffff;
+            --accent-hover: #e0e0e0;
+            --shadow: 0 1px 3px rgba(255,255,255,0.08);
+            --shadow-lg: 0 8px 24px rgba(255,255,255,0.12);
+            --card-bg: #1a1a1a;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f8f8;
+            --bg-tertiary: #f0f0f0;
+            --bg-elevated: #ffffff;
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --text-tertiary: #999999;
+            --border: #e0e0e0;
+            --accent: #000000;
+            --accent-hover: #333333;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+            --card-bg: #ffffff;
         }
 
         .container {
-            max-width: 800px;
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 0 24px;
         }
 
-        .glass-header {
+        /* Navigation */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-elevated);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            z-index: 1000;
+            padding: 16px 0;
+        }
+
+        .nav-content {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 14px 18px;
-            border-radius: 16px;
-            background: rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(14px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            margin-bottom: 30px;
         }
 
         .logo {
-            font-weight: 700;
-            letter-spacing: 0.4px;
             font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 15px;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+        }
+
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-primary);
+            transition: all 0.2s;
+            background: var(--bg-tertiary);
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-secondary);
+            transform: scale(1.05);
+        }
+
+        .theme-toggle i {
+            font-size: 16px;
+        }
+
+        /* Hero Section */
         .hero {
+            padding: 140px 0 80px;
             text-align: center;
-            padding: 50px 20px;
+            max-width: 720px;
+            margin: 0 auto;
         }
 
         .hero h1 {
-            font-size: 48px;
-            margin-bottom: 20px;
-            background: linear-gradient(45deg, #00d4ff, #0099ff);
+            font-size: 56px;
+            font-weight: 700;
+            letter-spacing: -1.5px;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .hero p {
             font-size: 18px;
-            opacity: 0.9;
-            margin-bottom: 30px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
         }
 
-        .cta-button {
-            display: inline-block;
-            padding: 15px 30px;
-            background: linear-gradient(45deg, #00d4ff, #0099ff);
-            color: white;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 18px;
-            transition: transform 0.3s;
+        .cta-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
         }
 
-        .cta-button:hover {
+        .btn {
+            padding: 14px 32px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-primary);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
             transform: translateY(-2px);
         }
 
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-secondary);
+            transform: translateY(-2px);
+        }
+
+        /* Features */
         .features {
+            padding: 100px 0;
+        }
+
+        .section-title {
+            font-size: 36px;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 60px;
+            letter-spacing: -1px;
+        }
+
+        .features-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-top: 50px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
         }
 
         .feature-card {
-            padding: 25px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
             border-radius: 16px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            backdrop-filter: blur(12px);
+            padding: 40px 32px;
+            transition: all 0.3s ease;
         }
 
-        .feature-card i {
-            font-size: 32px;
-            margin-bottom: 15px;
-            color: #00d4ff;
+        .feature-card:hover {
+            border-color: var(--text-primary);
+            transform: translateY(-4px);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            font-size: 20px;
+            color: var(--text-primary);
         }
 
         .feature-card h3 {
-            margin-bottom: 10px;
             font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 12px;
         }
 
-        .bottombox {
-            margin-top: 50px;
-            font-size: 11px;
-            opacity: 0.6;
-            text-align: center;
-            font-family: monospace;
+        .feature-card p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        /* Footer */
+        .footer {
+            padding: 60px 0 40px;
+            border-top: 1px solid var(--border);
+            margin-top: 100px;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 24px;
+        }
+
+        .footer-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .footer-link:hover {
+            color: var(--text-primary);
+        }
+
+        .copyright {
+            color: var(--text-tertiary);
+            font-size: 14px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 40px;
+            }
+            
+            .hero {
+                padding: 120px 0 60px;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 280px;
+                justify-content: center;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header class="glass-header">
-            <div class="logo">Talknote</div>
-            <div class="icons">
-                <i class="fa-solid fa-house"></i>
-                <i class="fa-solid fa-bookmark"></i>
-                <i class="fa-solid fa-user"></i>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container nav-content">
+            <a href="/" class="logo">
+                <i class="fas fa-comment-alt"></i>
+                Talknote
+            </a>
+            
+            <div class="nav-links">
+                <a href="#features" class="nav-link">Features</a>
+                <a href="/login.html" class="nav-link">Login</a>
+                <a href="/register.html" class="nav-link">Register</a>
+                <button class="theme-toggle" id="themeToggle">
+                    <i class="fas fa-moon"></i>
+                </button>
             </div>
-        </header>
-
-        <section class="hero">
-            <h1>Talknote</h1>
-            <p>Create, share, and collaborate on notes. Public notes get their own shareable link!</p>
-            <a href="#features" class="cta-button">Get Started</a>
-        </section>
-
-        <section class="features" id="features">
-            <div class="feature-card">
-                <i class="fa-solid fa-note-sticky"></i>
-                <h3>Create Notes</h3>
-                <p>Write notes with rich formatting and organize them your way.</p>
-            </div>
-            <div class="feature-card">
-                <i class="fa-solid fa-share-nodes"></i>
-                <h3>Share Publicly</h3>
-                <p>Share notes with anyone via a simple link. Control privacy settings.</p>
-            </div>
-            <div class="feature-card">
-                <i class="fa-solid fa-lock"></i>
-                <h3>Keep Private</h3>
-                <p>Some thoughts are just for you. Keep notes private when needed.</p>
-            </div>
-        </section>
-
-        <div class="bottombox">
-            Powered by Talknote © 2025 • <a href="/api/notes?note_id=example" style="color: #00d4ff; text-decoration: none;">API</a>
         </div>
-    </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1>Think. Write. Share.</h1>
+                <p>A minimalist note-taking platform where clarity meets productivity. Write notes, share thoughts, and collaborate seamlessly in a distraction-free environment.</p>
+                <div class="cta-buttons">
+                    <button class="btn btn-primary" onclick="window.location.href='/login.html'">
+                        <i class="fas fa-sign-in-alt"></i>
+                        Get Started
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.location.href='#features'">
+                        <i class="fas fa-bolt"></i>
+                        Learn More
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section id="features" class="features">
+            <div class="container">
+                <h2 class="section-title">Why Talknote</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-bolt"></i>
+                        </div>
+                        <h3>Lightning Fast</h3>
+                        <p>Write and access notes instantly with our optimized platform. No lag, no waiting.</p>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h3>Secure & Private</h3>
+                        <p>Your notes are encrypted and private by default. Share only what you want.</p>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <h3>AI-Powered</h3>
+                        <p>Get smart suggestions, summaries, and improvements with integrated AI.</p>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <h3>Collaborative</h3>
+                        <p>Share public notes and get feedback through comments and discussions.</p>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-palette"></i>
+                        </div>
+                        <h3>Monochrome Focus</h3>
+                        <p>Designed for concentration with clean black and white themes that adapt to you.</p>
+                    </div>
+                    
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-sync-alt"></i>
+                        </div>
+                        <h3>Real-time Sync</h3>
+                        <p>Access your notes anywhere. Changes sync instantly across all your devices.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA Section -->
+        <section class="features">
+            <div class="container">
+                <div class="feature-card" style="text-align: center; max-width: 600px; margin: 0 auto;">
+                    <div class="feature-icon" style="margin: 0 auto 24px;">
+                        <i class="fas fa-rocket"></i>
+                    </div>
+                    <h2>Ready to Write?</h2>
+                    <p style="margin-bottom: 24px;">Join thousands who have already organized their thoughts with Talknote.</p>
+                    <button class="btn btn-primary" onclick="window.location.href='/register.html'" style="margin: 0 auto;">
+                        <i class="fas fa-user-plus"></i>
+                        Create Free Account
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-content">
+            <div class="copyright">
+                © 2025 Talknote. All rights reserved.
+            </div>
+            <div class="footer-links">
+                <a href="/privacy.html" class="footer-link">Privacy</a>
+                <a href="/terms.html" class="footer-link">Terms</a>
+                <a href="/contact.html" class="footer-link">Contact</a>
+                <a href="https://github.com" class="footer-link">GitHub</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/theme-manager.js"></script>
+    <script>
+        // Initialize theme
+        document.addEventListener('DOMContentLoaded', () => {
+            const themeManager = new ThemeManager();
+            themeManager.init();
+        });
+    </script>
 </body>
 </html>
