@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { GoogleGenAI } from "@google/genai";
 
 // =============== CONFIGURATION ===============
-const GEMINI_MODEL = "gemini-2.5-flash;
+const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_TEMPERATURE = 0.7;
 const GEMINI_MAX_TOKENS = 8192;
 const CACHE_TTL_MS = 3600000; // 1 hour
