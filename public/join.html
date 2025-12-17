@@ -464,7 +464,7 @@
                 if (data.success) {
                     // Session is valid, redirect to dashboard
                     console.log('Valid session found, redirecting to dashboard...');
-                    window.location.href = '/dashboard.html';
+                    window.location.href = '/dashboard';
                 } else {
                     // Session is invalid, clear it
                     console.log('Invalid session, clearing...');
@@ -674,7 +674,7 @@
 
             // Redirect to dashboard
             setTimeout(() => {
-                window.location.href = '/dashboard.html';
+                window.location.href = '/dashboard';
             }, 1000);
         }
 
