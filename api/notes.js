@@ -318,7 +318,7 @@ async function handleCreateNote(req, res) {
 
     return res.status(201).json({
       success: true,
-      note: {
+     
         note_id: note.note_id,
         user_id: note.user_id,
         title: note.title,
@@ -326,8 +326,8 @@ async function handleCreateNote(req, res) {
         public: note.public,
         created_at: note.created_at,
         updated_at: note.updated_at,
-        comment_count: note.comment_count || 0
-      },
+        comment_count: note.comment_count || 0,
+     
       message: 'Note created successfully'
     });
   } catch (error) {
