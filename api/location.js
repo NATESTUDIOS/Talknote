@@ -7,6 +7,44 @@ const locationStorage = new Map();
 // Rate limiting storage
 const rateLimitMap = new Map();
 
+// User agent parser (simplified)
+function parseUserAgent(userAgent) {
+  if (!userAgent) return { browser: 'Unknown', os: 'Unknown', device: 'Unknown' };
+  
+  const ua = userAgent.toLowerCase();
+  let browser = 'Unknown';
+  let os = 'Unknown';
+  let device = 'Unknown';
+  
+  // Browser detection
+  if (ua.includes('chrome')) browser = 'Chrome';
+  else if (ua.includes('firefox')) browser = 'Firefox';
+  else if (ua.includes('safari') && !ua.includes('chrome')) browser = 'Safari';
+  else if (ua.includes('edge')) browser = 'Edge';
+  else if (ua.includes('opera')) browser = 'Opera';
+  
+  // OS detection
+  if (ua.includes('windows')) os = 'Windows';
+  else if (ua.includes('mac os')) os = 'macOS';
+  else if (ua.includes('linux')) os = 'Linux';
+  else if (ua.includes('android')) os = 'Android';
+  else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) os = 'iOS';
+  
+  // Device detection
+  if (ua.includes('mobile')) device = 'Mobile';
+  else if (ua.includes('tablet')) device = 'Tablet';
+  else if (ua.includes('bot') || ua.includes('crawler') || ua.includes('spider')) device = 'Bot';
+  else device = 'Desktop';
+  
+  // Check for bots/crawlers
+  const bots = ['bot', 'crawler', 'spider', 'scraper', 'curl', 'wget', 'python', 'java', 'php'];
+  if (bots.some(bot => ua.includes(bot))) {
+    device = 'Bot/Crawler';
+  }
+  
+  return { browser, os, device };
+}
+
 export default async function handler(req, res) {
   const { method, query: params, body } = req;
 
@@ -125,15 +163,67 @@ function getClientIp(req) {
          'unknown';
 }
 
+// Get all possible headers for device fingerprinting
+function collectHeaders(req) {
+  const headers = {};
+  const interestingHeaders = [
+    'user-agent',
+    'accept-language',
+    'accept-encoding',
+    'accept',
+    'connection',
+    'host',
+    'referer',
+    'origin',
+    'sec-ch-ua',
+    'sec-ch-ua-mobile',
+    'sec-ch-ua-platform',
+    'sec-fetch-dest',
+    'sec-fetch-mode',
+    'sec-fetch-site',
+    'dnt',
+    'upgrade-insecure-requests'
+  ];
+  
+  interestingHeaders.forEach(header => {
+    const value = req.headers[header];
+    if (value) {
+      headers[header] = value;
+    }
+  });
+  
+  return headers;
+}
+
 // Generate unique ID
 function generateId() {
   return `loc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// Generate device fingerprint
+function generateDeviceFingerprint(req) {
+  const ip = getClientIp(req);
+  const userAgent = req.headers['user-agent'] || '';
+  const acceptLanguage = req.headers['accept-language'] || '';
+  const headers = collectHeaders(req);
+  
+  // Create a simple fingerprint hash
+  const fingerprintString = `${ip}|${userAgent}|${acceptLanguage}`;
+  const fingerprint = Buffer.from(fingerprintString).toString('base64').substring(0, 32);
+  
+  return {
+    fingerprint,
+    ip,
+    userAgent,
+    acceptLanguage,
+    headers
+  };
+}
+
 // Get location from IP using multiple free APIs
 async function getLocationFromIp(ip) {
   // Handle local IPs
-  if (ip === 'unknown' || ip === '127.0.0.1' || ip.startsWith('192.168.')) {
+  if (ip === 'unknown' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
     return {
       ip: ip,
       latitude: 40.7128,
@@ -234,14 +324,16 @@ async function getLocationFromIp(ip) {
   return null;
 }
 
-// Store location
+// Store location with automatic device detection
 function storeLocation(data) {
   const id = generateId();
   const timestamp = data.timestamp || Date.now();
+  const userAgent = data.userAgent || 'unknown';
+  const deviceInfo = parseUserAgent(userAgent);
   
   const locationData = {
     id,
-    deviceName: data.deviceName || 'Unknown Device',
+    deviceName: data.deviceName || 'Anonymous-Visitor',
     latitude: data.latitude,
     longitude: data.longitude,
     accuracy: data.accuracy || null,
@@ -251,21 +343,28 @@ function storeLocation(data) {
     heading: data.heading || null,
     ip: data.ip || 'unknown',
     source: data.source || 'unknown',
-    userAgent: data.userAgent || 'unknown',
-    deviceInfo: data.deviceInfo || {},
+    userAgent: userAgent,
+    deviceInfo: {
+      ...deviceInfo,
+      ...(data.deviceInfo || {})
+    },
     city: data.city || null,
     country: data.country || null,
     region: data.region || null,
+    isp: data.isp || null,
+    fingerprint: data.fingerprint || null,
+    headers: data.headers || {},
     timestamp: timestamp,
     storedAt: new Date().toISOString(),
-    formattedTime: new Date(timestamp).toLocaleString()
+    formattedTime: new Date(timestamp).toLocaleString(),
+    method: data.method || 'GET'
   };
   
   locationStorage.set(id, locationData);
   
-  // Optional: Clean up old entries (keep last 1000)
-  if (locationStorage.size > 1000) {
-    const keys = Array.from(locationStorage.keys()).slice(0, 100);
+  // Optional: Clean up old entries (keep last 5000)
+  if (locationStorage.size > 5000) {
+    const keys = Array.from(locationStorage.keys()).slice(0, 1000);
     keys.forEach(key => locationStorage.delete(key));
   }
   
@@ -287,7 +386,9 @@ function getAllLocations() {
         totalLocations: 0,
         firstSeen: null,
         lastSeen: null,
-        locations: []
+        locations: [],
+        deviceInfo: location.deviceInfo,
+        fingerprint: location.fingerprint
       };
     }
     
@@ -312,6 +413,18 @@ function getAllLocations() {
     device.locations.sort((a, b) => b.timestamp - a.timestamp);
     device.firstSeenFormatted = new Date(device.firstSeen).toLocaleString();
     device.lastSeenFormatted = new Date(device.lastSeen).toLocaleString();
+    
+    // Get most common location
+    const locationCounts = {};
+    device.locations.forEach(loc => {
+      const key = `${loc.latitude?.toFixed(4)}|${loc.longitude?.toFixed(4)}`;
+      locationCounts[key] = (locationCounts[key] || 0) + 1;
+    });
+    
+    const mostCommonKey = Object.keys(locationCounts).reduce((a, b) => 
+      locationCounts[a] > locationCounts[b] ? a : b
+    );
+    device.mostCommonLocation = mostCommonKey.split('|').map(Number);
   });
   
   return {
@@ -360,12 +473,19 @@ async function handleGet(req, res, params) {
     ip, 
     format,
     limit,
-    since
+    since,
+    fingerprint,
+    analytics
   } = params;
 
   // Dashboard view - shows all devices and locations
   if (view === 'dashboard') {
     return getDashboardView(res);
+  }
+
+  // Analytics view
+  if (view === 'analytics') {
+    return getAnalyticsView(res);
   }
 
   // Get specific location by ID
@@ -418,6 +538,8 @@ async function handleGet(req, res, params) {
       totalLocations: deviceData.totalLocations,
       firstSeen: deviceData.firstSeenFormatted,
       lastSeen: deviceData.lastSeenFormatted,
+      deviceInfo: deviceData.deviceInfo,
+      fingerprint: deviceData.fingerprint,
       locations: deviceData.locations
     });
   }
@@ -431,6 +553,7 @@ async function handleGet(req, res, params) {
         deviceName: device.deviceName,
         totalLocations: device.totalLocations,
         lastSeen: device.lastSeenFormatted,
+        deviceInfo: device.deviceInfo,
         lastLocation: device.locations[0] ? {
           latitude: device.locations[0].latitude,
           longitude: device.locations[0].longitude,
@@ -444,6 +567,61 @@ async function handleGet(req, res, params) {
         totalDevices: allData.totalDevices,
         totalLocations: allData.totalLocations,
         devices: simpleData
+      });
+    }
+    
+    // Analytics data
+    if (analytics === 'true') {
+      const analyticsData = {
+        uniqueDevices: allData.totalDevices,
+        totalRequests: allData.totalLocations,
+        byBrowser: {},
+        byOS: {},
+        byDeviceType: {},
+        byCountry: {},
+        requestsByHour: {},
+        topIPs: {}
+      };
+      
+      allData.devices.forEach(device => {
+        device.locations.forEach(loc => {
+          // Browser stats
+          const browser = loc.deviceInfo?.browser || 'Unknown';
+          analyticsData.byBrowser[browser] = (analyticsData.byBrowser[browser] || 0) + 1;
+          
+          // OS stats
+          const os = loc.deviceInfo?.os || 'Unknown';
+          analyticsData.byOS[os] = (analyticsData.byOS[os] || 0) + 1;
+          
+          // Device type stats
+          const deviceType = loc.deviceInfo?.device || 'Unknown';
+          analyticsData.byDeviceType[deviceType] = (analyticsData.byDeviceType[deviceType] || 0) + 1;
+          
+          // Country stats
+          const country = loc.country || 'Unknown';
+          analyticsData.byCountry[country] = (analyticsData.byCountry[country] || 0) + 1;
+          
+          // Hourly stats
+          const hour = new Date(loc.timestamp).getHours();
+          analyticsData.requestsByHour[hour] = (analyticsData.requestsByHour[hour] || 0) + 1;
+          
+          // IP stats
+          if (loc.ip && loc.ip !== 'unknown') {
+            analyticsData.topIPs[loc.ip] = (analyticsData.topIPs[loc.ip] || 0) + 1;
+          }
+        });
+      });
+      
+      // Sort top IPs
+      analyticsData.topIPs = Object.entries(analyticsData.topIPs)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .reduce((obj, [ip, count]) => ({...obj, [ip]: count}), {});
+      
+      return res.status(200).json({
+        success: true,
+        analytics: analyticsData,
+        timestamp: new Date().toISOString()
       });
     }
     
@@ -464,11 +642,14 @@ async function handleGet(req, res, params) {
     }
     
     // Store with generic device name
+    const fingerprintData = generateDeviceFingerprint(req);
     const storedLocation = storeLocation({
       ...location,
-      deviceName: `IP_${ip}`,
+      deviceName: `IP-Lookup-${ip.substring(0, 8)}`,
       source: 'ip-lookup',
-      ip: ip
+      ip: ip,
+      ...fingerprintData,
+      method: 'GET-IP'
     });
     
     return res.status(200).json({
@@ -478,32 +659,75 @@ async function handleGet(req, res, params) {
     });
   }
 
-  // Default: Get location from requester's IP
-  const clientIP = getClientIp(req);
-  const location = await getLocationFromIp(clientIP);
-  
-  if (!location) {
-    return res.status(500).json({ 
-      error: 'Unable to fetch your location' 
+  // Get locations by fingerprint
+  if (fingerprint) {
+    const locations = Array.from(locationStorage.values())
+      .filter(loc => loc.fingerprint === fingerprint)
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    return res.status(200).json({
+      success: true,
+      count: locations.length,
+      fingerprint: fingerprint,
+      locations: locations
     });
   }
+
+  // DEFAULT: Regular API call - collect visitor information automatically
+  return await handleRegularApiCall(req, res);
+}
+
+// Handle regular API call (no special parameters)
+async function handleRegularApiCall(req, res) {
+  const clientIP = getClientIp(req);
+  const fingerprintData = generateDeviceFingerprint(req);
+  const userAgentInfo = parseUserAgent(fingerprintData.userAgent);
   
-  // Store with device name based on IP
+  // Generate device name based on fingerprint
+  const deviceName = `Visitor-${fingerprintData.fingerprint.substring(0, 8)}`;
+  
+  // Try to get location from IP
+  const ipLocation = await getLocationFromIp(clientIP);
+  
+  // Store visitor information
   const storedLocation = storeLocation({
-    ...location,
-    deviceName: `IP_${clientIP}`,
-    source: 'auto-detect',
-    clientIP,
-    userAgent: req.headers['user-agent'] || 'unknown',
-    method: 'GET'
+    deviceName: deviceName,
+    latitude: ipLocation?.latitude || null,
+    longitude: ipLocation?.longitude || null,
+    city: ipLocation?.city || null,
+    country: ipLocation?.country || null,
+    region: ipLocation?.region || null,
+    isp: ipLocation?.isp || null,
+    ip: clientIP,
+    source: 'auto-track',
+    ...fingerprintData,
+    deviceInfo: userAgentInfo,
+    method: 'GET-AUTO'
   });
   
+  // Return visitor information
   return res.status(200).json({
     success: true,
-    location: storedLocation,
-    clientIP,
-    storedId: storedLocation.id,
-    timestamp: new Date().toISOString()
+    message: 'Visitor information collected successfully',
+    visitor: {
+      id: storedLocation.id,
+      deviceName: storedLocation.deviceName,
+      ip: clientIP,
+      location: ipLocation ? {
+        city: ipLocation.city,
+        region: ipLocation.region,
+        country: ipLocation.country,
+        coordinates: ipLocation.latitude && ipLocation.longitude ? {
+          latitude: ipLocation.latitude,
+          longitude: ipLocation.longitude
+        } : null
+      } : null,
+      deviceInfo: userAgentInfo,
+      fingerprint: fingerprintData.fingerprint,
+      timestamp: new Date().toISOString()
+    },
+    dashboardUrl: `${req.headers.host}/api/location?view=dashboard`,
+    yourDataUrl: `${req.headers.host}/api/location?fingerprint=${fingerprintData.fingerprint}`
   });
 }
 
@@ -528,8 +752,11 @@ async function handlePost(req, res, params, body) {
 // Handle device geolocation submission
 async function handleDeviceGeolocation(res, body, req) {
   // Sanitize input data
+  const fingerprintData = generateDeviceFingerprint(req);
+  const userAgentInfo = parseUserAgent(fingerprintData.userAgent);
+  
   const sanitizedData = {
-    deviceName: sanitizeInput(body.deviceName || `Device_${Date.now()}`),
+    deviceName: sanitizeInput(body.deviceName || `Device-${fingerprintData.fingerprint.substring(0, 8)}`),
     latitude: body.latitude,
     longitude: body.longitude,
     accuracy: body.accuracy,
@@ -539,13 +766,17 @@ async function handleDeviceGeolocation(res, body, req) {
     heading: body.heading,
     timestamp: body.timestamp || Date.now(),
     source: sanitizeInput(body.source || 'device-geolocation'),
-    deviceInfo: body.deviceInfo || {},
+    deviceInfo: {
+      ...userAgentInfo,
+      ...(body.deviceInfo || {})
+    },
     ip: body.ip || getClientIp(req),
     userAgent: req.headers['user-agent'] || 'unknown',
     method: 'POST',
     city: body.city,
     country: body.country,
-    region: body.region
+    region: body.region,
+    ...fingerprintData
   };
 
   // Validate location data
@@ -564,13 +795,15 @@ async function handleDeviceGeolocation(res, body, req) {
     success: true,
     message: 'Device location received successfully',
     location: storedLocation,
-    dashboardUrl: `${req.headers.host}/api/location?view=dashboard`
+    dashboardUrl: `${req.headers.host}/api/location?view=dashboard`,
+    yourDataUrl: `${req.headers.host}/api/location?fingerprint=${fingerprintData.fingerprint}`
   });
 }
 
 // Handle bulk location submission
 async function handleBulkLocation(res, body, req) {
   const { locations, deviceName } = body;
+  const fingerprintData = generateDeviceFingerprint(req);
   
   if (!Array.isArray(locations) || locations.length === 0) {
     return res.status(400).json({ 
@@ -589,7 +822,7 @@ async function handleBulkLocation(res, body, req) {
 
   for (const loc of locations) {
     try {
-      const deviceNameToUse = deviceName || loc.deviceName || `Device_${Date.now()}`;
+      const deviceNameToUse = deviceName || loc.deviceName || `Device-${fingerprintData.fingerprint.substring(0, 8)}`;
       
       const validationErrors = validateLocationData({
         ...loc,
@@ -602,7 +835,8 @@ async function handleBulkLocation(res, body, req) {
           deviceName: deviceNameToUse,
           ip: loc.ip || getClientIp(req),
           userAgent: req.headers['user-agent'] || 'unknown',
-          method: 'BULK_POST'
+          method: 'BULK_POST',
+          ...fingerprintData
         });
         storedLocations.push(storedLoc.id);
       } else {
@@ -624,6 +858,8 @@ async function handleBulkLocation(res, body, req) {
     storedCount: storedLocations.length,
     errorCount: errors.length,
     storedIds: storedLocations,
+    fingerprint: fingerprintData.fingerprint,
+    yourDataUrl: `${req.headers.host}/api/location?fingerprint=${fingerprintData.fingerprint}`,
     errors: errors.length > 0 ? errors : undefined
   });
 }
@@ -686,6 +922,44 @@ async function handleDelete(req, res, params) {
 function getDashboardView(res) {
   const allData = getAllLocations();
   
+  // Calculate analytics
+  const analytics = {
+    byBrowser: {},
+    byOS: {},
+    byDeviceType: {},
+    byCountry: {},
+    requestsByHour: Array(24).fill(0),
+    topVisitors: []
+  };
+  
+  allData.devices.forEach(device => {
+    device.locations.forEach(loc => {
+      const browser = loc.deviceInfo?.browser || 'Unknown';
+      analytics.byBrowser[browser] = (analytics.byBrowser[browser] || 0) + 1;
+      
+      const os = loc.deviceInfo?.os || 'Unknown';
+      analytics.byOS[os] = (analytics.byOS[os] || 0) + 1;
+      
+      const deviceType = loc.deviceInfo?.device || 'Unknown';
+      analytics.byDeviceType[deviceType] = (analytics.byDeviceType[deviceType] || 0) + 1;
+      
+      const country = loc.country || 'Unknown';
+      analytics.byCountry[country] = (analytics.byCountry[country] || 0) + 1;
+      
+      const hour = new Date(loc.timestamp).getHours();
+      analytics.requestsByHour[hour]++;
+    });
+    
+    analytics.topVisitors.push({
+      deviceName: device.deviceName,
+      totalLocations: device.totalLocations,
+      deviceInfo: device.deviceInfo,
+      lastSeen: device.lastSeenFormatted
+    });
+  });
+  
+  analytics.topVisitors.sort((a, b) => b.totalLocations - a.totalLocations).slice(0, 10);
+  
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -694,6 +968,7 @@ function getDashboardView(res) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Location Tracker Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -703,7 +978,7 @@ function getDashboardView(res) {
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
         .header {
@@ -734,6 +1009,10 @@ function getDashboardView(res) {
             border-radius: 10px;
             text-align: center;
             min-width: 150px;
+            transition: transform 0.3s;
+        }
+        .stat-box:hover {
+            transform: translateY(-2px);
         }
         .stat-box h3 {
             color: #666;
@@ -745,47 +1024,42 @@ function getDashboardView(res) {
             font-weight: bold;
             color: #333;
         }
-        .devices-container {
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .card {
             background: white;
             border-radius: 15px;
             padding: 25px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
-        .devices-header {
+        .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
             padding-bottom: 15px;
             border-bottom: 2px solid #f0f0f0;
         }
-        .devices-header h2 {
+        .card-header h2 {
             color: #333;
-            font-size: 22px;
+            font-size: 20px;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        .search-box {
-            padding: 10px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            width: 300px;
-            font-size: 16px;
-            transition: border-color 0.3s;
-        }
-        .search-box:focus {
-            outline: none;
-            border-color: #667eea;
-        }
         .device-list {
-            display: grid;
-            gap: 15px;
+            max-height: 400px;
+            overflow-y: auto;
         }
         .device-card {
             background: #f8f9fa;
             border-radius: 10px;
-            padding: 20px;
+            padding: 15px;
+            margin-bottom: 10px;
             transition: all 0.3s;
             cursor: pointer;
             border: 2px solid transparent;
@@ -793,175 +1067,42 @@ function getDashboardView(res) {
         .device-card:hover {
             background: #eef2ff;
             border-color: #667eea;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
         }
         .device-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         .device-name {
-            font-size: 20px;
+            font-size: 16px;
             font-weight: bold;
             color: #333;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
-        .device-name i {
-            color: #667eea;
-        }
-        .device-meta {
+        .device-info {
             display: flex;
             gap: 15px;
-            color: #666;
-            font-size: 14px;
-        }
-        .device-locations {
-            background: white;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 10px;
-        }
-        .location-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            border-bottom: 1px solid #f0f0f0;
-        }
-        .location-item:last-child {
-            border-bottom: none;
-        }
-        .location-coords {
-            font-family: monospace;
-            background: #f0f0f0;
-            padding: 5px 10px;
-            border-radius: 5px;
-        }
-        .location-time {
-            color: #666;
-            font-size: 14px;
-        }
-        .no-devices {
-            text-align: center;
-            padding: 50px;
-            color: #666;
-            font-size: 18px;
-        }
-        .no-devices i {
-            font-size: 48px;
-            margin-bottom: 20px;
-            color: #ccc;
-        }
-        .device-actions {
-            display: flex;
-            gap: 10px;
-        }
-        .btn {
-            padding: 8px 15px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            transition: all 0.3s;
-        }
-        .btn-view {
-            background: #667eea;
-            color: white;
-        }
-        .btn-view:hover {
-            background: #5a6fd8;
-        }
-        .btn-map {
-            background: #10b981;
-            color: white;
-        }
-        .btn-map:hover {
-            background: #0da271;
-        }
-        .btn-delete {
-            background: #ef4444;
-            color: white;
-        }
-        .btn-delete:hover {
-            background: #dc2626;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            max-width: 800px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-        .modal-header h2 {
-            color: #333;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .close-modal {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #666;
-        }
-        .location-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .detail-item {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-        }
-        .detail-label {
             font-size: 12px;
             color: #666;
-            text-transform: uppercase;
-            margin-bottom: 5px;
         }
-        .detail-value {
-            font-size: 16px;
-            color: #333;
-            font-weight: 500;
+        .device-location {
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
         }
-        .map-container {
-            height: 300px;
-            width: 100%;
-            border-radius: 10px;
-            overflow: hidden;
-            margin-top: 20px;
+        .chart-container {
+            height: 250px;
+            margin-top: 15px;
+        }
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
         }
         .refresh-btn {
             position: fixed;
@@ -979,9 +1120,67 @@ function getDashboardView(res) {
             transition: all 0.3s;
             font-size: 24px;
             color: #667eea;
+            z-index: 1000;
         }
         .refresh-btn:hover {
             transform: rotate(90deg);
+        }
+        .tab-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            background: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            background: #667eea;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .visitor-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .visitor-icon {
+            width: 40px;
+            height: 40px;
+            background: #667eea;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+        }
+        .api-info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .code {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin: 10px 0;
         }
     </style>
 </head>
@@ -1005,68 +1204,157 @@ function getDashboardView(res) {
             </div>
         </div>
         
-        <div class="devices-container">
-            <div class="devices-header">
-                <h2><i class="fas fa-mobile-alt"></i> Tracked Devices</h2>
-                <input type="text" class="search-box" placeholder="Search devices..." id="searchInput">
-            </div>
-            
-            <div class="device-list" id="deviceList">
-                ${allData.totalDevices === 0 ? 
-                    '<div class="no-devices"><i class="fas fa-map-marked-alt"></i><p>No devices tracked yet. Submit your first location!</p></div>' : 
-                    allData.devices.map(device => `
-                        <div class="device-card" data-device="${device.deviceName}">
-                            <div class="device-header">
-                                <div>
+        <div class="tab-container">
+            <div class="tab active" onclick="switchTab('devices')">Devices</div>
+            <div class="tab" onclick="switchTab('analytics')">Analytics</div>
+            <div class="tab" onclick="switchTab('api')">API Usage</div>
+        </div>
+        
+        <div class="tab-content active" id="devicesTab">
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="fas fa-mobile-alt"></i> Tracked Devices</h2>
+                    <input type="text" placeholder="Search devices..." id="searchInput" 
+                           style="padding: 8px 15px; border: 2px solid #e0e0e0; border-radius: 8px; width: 300px;">
+                </div>
+                <div class="device-list" id="deviceList">
+                    ${allData.totalDevices === 0 ? 
+                        '<div style="text-align: center; padding: 40px; color: #666;">No devices tracked yet. Call the API to get started!</div>' : 
+                        allData.devices.map(device => `
+                            <div class="device-card" data-device="${device.deviceName}">
+                                <div class="device-header">
                                     <div class="device-name">
-                                        <i class="fas fa-mobile-alt"></i>
+                                        <i class="fas fa-${device.deviceInfo?.device === 'Mobile' ? 'mobile-alt' : 
+                                                         device.deviceInfo?.device === 'Desktop' ? 'desktop' : 
+                                                         device.deviceInfo?.device === 'Tablet' ? 'tablet-alt' : 
+                                                         'question-circle'}"></i>
                                         ${device.deviceName}
                                     </div>
-                                    <div class="device-meta">
-                                        <span><i class="fas fa-database"></i> ${device.totalLocations} locations</span>
-                                        <span><i class="fas fa-clock"></i> First: ${device.firstSeenFormatted}</span>
-                                        <span><i class="fas fa-history"></i> Last: ${device.lastSeenFormatted}</span>
-                                    </div>
+                                    <span style="font-size: 12px; color: #666;">${device.totalLocations} locations</span>
                                 </div>
-                                <div class="device-actions">
-                                    <button class="btn btn-view" onclick="viewDevice('${device.deviceName}')">
-                                        <i class="fas fa-eye"></i> View
-                                    </button>
-                                    <button class="btn btn-map" onclick="viewOnMap('${device.deviceName}')">
-                                        <i class="fas fa-map"></i> Map
-                                    </button>
+                                <div class="device-info">
+                                    <span><i class="fas fa-globe"></i> ${device.deviceInfo?.os || 'Unknown OS'}</span>
+                                    <span><i class="fas fa-compass"></i> ${device.deviceInfo?.browser || 'Unknown Browser'}</span>
+                                    <span><i class="fas fa-clock"></i> Last: ${device.lastSeenFormatted}</span>
                                 </div>
-                            </div>
-                            ${device.locations.length > 0 ? `
-                                <div class="device-locations">
-                                    <div class="location-item">
-                                        <div class="location-coords">
+                                ${device.locations[0]?.latitude ? `
+                                    <div style="margin-top: 10px;">
+                                        <div class="device-location">
                                             ${device.locations[0].latitude.toFixed(6)}, ${device.locations[0].longitude.toFixed(6)}
                                         </div>
-                                        <div class="location-time">
-                                            ${device.locations[0].formattedTime}
-                                        </div>
+                                        ${device.locations[0].city ? 
+                                            `<div style="font-size: 12px; color: #666; margin-top: 5px;">
+                                                <i class="fas fa-map-pin"></i> ${device.locations[0].city}, ${device.locations[0].country}
+                                            </div>` : ''}
                                     </div>
-                                    ${device.totalLocations > 1 ? 
-                                        '<div style="text-align: center; padding: 10px; color: #666;">... and ' + (device.totalLocations - 1) + ' more locations</div>' : ''}
-                                </div>
-                            ` : ''}
-                        </div>
-                    `).join('')
-                }
+                                ` : ''}
+                            </div>
+                        `).join('')
+                    }
+                </div>
             </div>
         </div>
-    </div>
-    
-    <!-- Device Details Modal -->
-    <div class="modal" id="deviceModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-mobile-alt"></i> <span id="modalDeviceName"></span></h2>
-                <button class="close-modal" onclick="closeModal()">&times;</button>
+        
+        <div class="tab-content" id="analyticsTab">
+            <div class="analytics-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-chart-pie"></i> Browser Usage</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="browserChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-chart-bar"></i> OS Distribution</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="osChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-chart-line"></i> Requests by Hour</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="hourlyChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-users"></i> Top Visitors</h2>
+                    </div>
+                    <div style="max-height: 250px; overflow-y: auto;">
+                        ${analytics.topVisitors.slice(0, 5).map(visitor => `
+                            <div class="visitor-info">
+                                <div class="visitor-icon">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight: bold;">${visitor.deviceName}</div>
+                                    <div style="font-size: 12px; color: #666;">
+                                        ${visitor.deviceInfo?.browser} on ${visitor.deviceInfo?.os}
+                                    </div>
+                                    <div style="font-size: 11px; color: #999;">
+                                        ${visitor.totalLocations} requests • Last: ${visitor.lastSeen}
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
             </div>
-            <div id="modalContent">
-                <!-- Device details will be loaded here -->
+        </div>
+        
+        <div class="tab-content" id="apiTab">
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="fas fa-code"></i> API Usage Guide</h2>
+                </div>
+                <div class="api-info">
+                    <h3>Basic Usage:</h3>
+                    <p>Simply call the API endpoint to automatically track visitor information:</p>
+                    <div class="code">
+                        // Basic GET request - auto-collects visitor data<br>
+                        fetch('/api/location')<br>
+                          .then(response => response.json())<br>
+                          .then(data => console.log(data));
+                    </div>
+                    
+                    <h3>Submit Device Location:</h3>
+                    <div class="code">
+                        fetch('/api/location', {<br>
+                          method: 'POST',<br>
+                          headers: { 'Content-Type': 'application/json' },<br>
+                          body: JSON.stringify({<br>
+                            deviceName: 'My-Device',<br>
+                            latitude: 40.7128,<br>
+                            longitude: -74.0060,<br>
+                            accuracy: 25<br>
+                          })<br>
+                        })
+                    </div>
+                    
+                    <h3>Get Your Data:</h3>
+                    <div class="code">
+                        // Your data is automatically tracked with a fingerprint<br>
+                        // Check the response for your fingerprint URL<br>
+                        // Example: /api/location?fingerprint=YOUR_UNIQUE_FINGERPRINT
+                    </div>
+                    
+                    <h3>View All Data:</h3>
+                    <div class="code">
+                        // Get all devices and locations<br>
+                        fetch('/api/location?view=all')<br>
+                        <br>
+                        // View analytics<br>
+                        fetch('/api/location?view=all&analytics=true')
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1076,9 +1364,22 @@ function getDashboardView(res) {
         <i class="fas fa-redo"></i>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
+        const analyticsData = ${JSON.stringify(analytics)};
         let allDevices = ${JSON.stringify(allData.devices)};
+        
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}Tab`).classList.add('active');
+            
+            if (tabName === 'analytics') {
+                renderCharts();
+            }
+        }
         
         // Search functionality
         document.getElementById('searchInput').addEventListener('input', function(e) {
@@ -1095,128 +1396,69 @@ function getDashboardView(res) {
             });
         });
         
-        // View device details
-        async function viewDevice(deviceName) {
-            try {
-                const response = await fetch(\`/api/location?device=\${encodeURIComponent(deviceName)}\`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    const device = data;
-                    const modalContent = document.getElementById('modalContent');
-                    const modal = document.getElementById('deviceModal');
-                    
-                    document.getElementById('modalDeviceName').textContent = deviceName;
-                    
-                    // Generate device details HTML
-                    modalContent.innerHTML = \`
-                        <div class="location-details">
-                            <div class="detail-item">
-                                <div class="detail-label">Total Locations</div>
-                                <div class="detail-value">\${device.totalLocations}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">First Seen</div>
-                                <div class="detail-value">\${device.firstSeen}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Last Seen</div>
-                                <div class="detail-value">\${device.lastSeen}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Current Location</div>
-                                <div class="detail-value">
-                                    \${device.locations[0] ? 
-                                        device.locations[0].latitude.toFixed(6) + ', ' + device.locations[0].longitude.toFixed(6) : 
-                                        'Unknown'}
-                                </div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Last City</div>
-                                <div class="detail-value">
-                                    \${device.locations[0]?.city || 'Unknown'}
-                                </div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Last Country</div>
-                                <div class="detail-value">
-                                    \${device.locations[0]?.country || 'Unknown'}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <h3 style="margin: 20px 0 10px 0; color: #333;">Recent Locations</h3>
-                        <div style="max-height: 300px; overflow-y: auto;">
-                            \${device.locations.map(loc => \`
-                                <div class="location-item" style="border: 1px solid #f0f0f0; margin: 5px 0; padding: 10px; border-radius: 5px;">
-                                    <div>
-                                        <strong>\${loc.latitude.toFixed(6)}, \${loc.longitude.toFixed(6)}</strong>
-                                        <div style="font-size: 12px; color: #666;">
-                                            Accuracy: \${loc.accuracy ? loc.accuracy.toFixed(0) + 'm' : 'N/A'} | 
-                                            Speed: \${loc.speed ? loc.speed.toFixed(1) + 'm/s' : 'N/A'} |
-                                            Altitude: \${loc.altitude ? loc.altitude.toFixed(0) + 'm' : 'N/A'}
-                                        </div>
-                                    </div>
-                                    <div style="text-align: right;">
-                                        <div style="color: #666; font-size: 12px;">\${loc.formattedTime}</div>
-                                        <div style="font-size: 12px; color: #999;">
-                                            \${loc.city ? loc.city + ', ' : ''}\${loc.country || ''}
-                                        </div>
-                                    </div>
-                                </div>
-                            \`).join('')}
-                        </div>
-                        
-                        <div class="map-container" id="deviceMap"></div>
-                    \`;
-                    
-                    // Initialize map for device
-                    if (device.locations.length > 0 && device.locations[0].latitude && device.locations[0].longitude) {
-                        setTimeout(() => {
-                            const map = L.map('deviceMap').setView(
-                                [device.locations[0].latitude, device.locations[0].longitude], 
-                                13
-                            );
-                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                                attribution: '© OpenStreetMap contributors'
-                            }).addTo(map);
-                            
-                            // Add markers for all locations
-                            device.locations.forEach(loc => {
-                                L.marker([loc.latitude, loc.longitude])
-                                    .addTo(map)
-                                    .bindPopup(\`
-                                        <b>\${loc.formattedTime}</b><br>
-                                        Lat: \${loc.latitude.toFixed(6)}<br>
-                                        Lng: \${loc.longitude.toFixed(6)}<br>
-                                        \${loc.city ? 'City: ' + loc.city + '<br>' : ''}
-                                        \${loc.accuracy ? 'Accuracy: ' + loc.accuracy.toFixed(0) + 'm' : ''}
-                                    \`);
-                            });
-                        }, 100);
-                    }
-                    
-                    modal.style.display = 'flex';
+        // Render charts
+        function renderCharts() {
+            // Browser chart
+            const browserCtx = document.getElementById('browserChart').getContext('2d');
+            new Chart(browserCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(analyticsData.byBrowser),
+                    datasets: [{
+                        data: Object.values(analyticsData.byBrowser),
+                        backgroundColor: ['#667eea', '#764ba2', '#f56565', '#ed8936', '#ecc94b', '#48bb78']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
                 }
-            } catch (error) {
-                console.error('Error loading device:', error);
-                alert('Failed to load device details');
-            }
-        }
-        
-        // View device on map
-        function viewOnMap(deviceName) {
-            const device = allDevices.find(d => d.deviceName === deviceName);
-            if (device && device.locations.length > 0) {
-                const lat = device.locations[0].latitude;
-                const lng = device.locations[0].longitude;
-                window.open(\`/api/location?map=true&lat=\${lat}&lng=\${lng}\`, '_blank');
-            }
-        }
-        
-        // Close modal
-        function closeModal() {
-            document.getElementById('deviceModal').style.display = 'none';
+            });
+            
+            // OS chart
+            const osCtx = document.getElementById('osChart').getContext('2d');
+            new Chart(osCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(analyticsData.byOS),
+                    datasets: [{
+                        label: 'Requests',
+                        data: Object.values(analyticsData.byOS),
+                        backgroundColor: '#667eea'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+            
+            // Hourly chart
+            const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
+            new Chart(hourlyCtx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+                    datasets: [{
+                        label: 'Requests',
+                        data: analyticsData.requestsByHour,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
         }
         
         // Refresh data
@@ -1228,7 +1470,6 @@ function getDashboardView(res) {
                 const data = await response.json();
                 
                 if (data.success) {
-                    allDevices = data.devices;
                     location.reload();
                 }
             } catch (error) {
@@ -1249,13 +1490,10 @@ function getDashboardView(res) {
         setInterval(updateTime, 60000);
         updateTime();
         
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('deviceModal');
-            if (event.target === modal) {
-                closeModal();
-            }
-        };
+        // Initialize charts if on analytics tab
+        if (window.location.hash === '#analytics') {
+            setTimeout(renderCharts, 100);
+        }
     </script>
 </body>
 </html>
@@ -1263,4 +1501,37 @@ function getDashboardView(res) {
     
     res.setHeader('Content-Type', 'text/html');
     res.status(200).send(html);
+}
+
+// Analytics view
+function getAnalyticsView(res) {
+  const allData = getAllLocations();
+  
+  // Calculate detailed analytics
+  const analytics = {
+    summary: {
+      totalDevices: allData.totalDevices,
+      totalLocations: allData.totalLocations,
+      dateRange: {
+        start: allData.devices.length > 0 ? 
+          new Date(Math.min(...allData.devices.map(d => d.firstSeen))).toISOString() : null,
+        end: allData.devices.length > 0 ?
+          new Date(Math.max(...allData.devices.map(d => d.lastSeen))).toISOString() : null
+      }
+    },
+    devices: allData.devices.map(device => ({
+      name: device.deviceName,
+      totalLocations: device.totalLocations,
+      deviceInfo: device.deviceInfo,
+      firstSeen: device.firstSeenFormatted,
+      lastSeen: device.lastSeenFormatted,
+      fingerprint: device.fingerprint
+    }))
+  };
+  
+  res.status(200).json({
+    success: true,
+    analytics: analytics,
+    timestamp: new Date().toISOString()
+  });
 }
