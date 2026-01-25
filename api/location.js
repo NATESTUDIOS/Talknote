@@ -1,12 +1,10 @@
 // api/location.js
 import axios from 'axios';
+import { db } from "../utils/firebase.js";
+import { v4 as uuidv4 } from 'uuid';
 
 // ==================== CONFIGURATION ====================
 const CONFIG = {
-  // WARNING: Memory storage resets on serverless platforms
-  // For production, replace with Redis, Firebase, or PostgreSQL
-  USE_MEMORY_STORAGE: true, // Set to false and implement persistent storage
-  
   // Rate limiting configuration
   RATE_LIMIT_MAX_REQUESTS: 100,
   RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
@@ -21,15 +19,12 @@ const CONFIG = {
   ADMIN_SECRET: process.env.LOCATION_ADMIN_SECRET || 'dev-secret-change-me',
   CORS_ALLOW_HEADERS: 'Content-Type, Authorization, X-API-Key',
   
-  // Storage limits
-  MAX_STORAGE_SIZE: 1000,
-  CLEANUP_BATCH_SIZE: 100
+  // Firebase storage limits
+  MAX_RETURNED_LOCATIONS: 1000
 };
 
-// ==================== STORAGE ====================
-// In-memory storage (for demo only - resets on serverless deployments!)
-// Replace with persistent storage in production
-const locationStorage = new Map();
+// ==================== RATE LIMITING IN MEMORY ====================
+// Rate limiting still in memory since it's short-lived
 const rateLimitStorage = new Map();
 
 // ==================== HELPER FUNCTIONS ====================
@@ -44,20 +39,19 @@ function getClientIp(req) {
          'unknown';
 }
 
-// Get rate limit key (fixes critical bug #1)
+// Get rate limit key
 function getRateLimitKey(req) {
   const clientIP = getClientIp(req);
   const userAgent = req.headers['user-agent'] || 'no-ua';
   
   if (clientIP === 'unknown' || clientIP === '127.0.0.1') {
-    // Use user agent + timestamp for local/dev traffic
     return `local_${userAgent}_${Date.now() % 10000}`;
   }
   
   return clientIP;
 }
 
-// Rate limiting with safe key (fixes bug #1)
+// Rate limiting
 function checkRateLimit(req) {
   const rateKey = getRateLimitKey(req);
   const now = Date.now();
@@ -71,7 +65,6 @@ function checkRateLimit(req) {
   const requests = rateLimitStorage.get(rateKey).filter(time => time > windowStart);
   rateLimitStorage.set(rateKey, [...requests, now]);
 
-  // Clean up old entries periodically
   if (requests.length === 0) {
     rateLimitStorage.delete(rateKey);
   }
@@ -79,15 +72,15 @@ function checkRateLimit(req) {
   return requests.length < CONFIG.RATE_LIMIT_MAX_REQUESTS;
 }
 
-// Input sanitization for display only (clarifies bug #9)
+// Input sanitization for display only
 function sanitizeForDisplay(input) {
   if (typeof input !== 'string') return input;
   return input.trim()
-    .replace(/[<>]/g, '') // Remove angle brackets for HTML safety
-    .substring(0, 500); // Limit length
+    .replace(/[<>]/g, '')
+    .substring(0, 500);
 }
 
-// Enhanced device fingerprinting (fixes bug #4)
+// Enhanced device fingerprinting
 function generateDeviceFingerprint(req) {
   const ip = getClientIp(req);
   const userAgent = req.headers['user-agent'] || '';
@@ -95,7 +88,6 @@ function generateDeviceFingerprint(req) {
   const secCHUA = req.headers['sec-ch-ua'] || '';
   const secCHUAPlatform = req.headers['sec-ch-ua-platform'] || '';
   
-  // Add entropy to prevent collisions
   const fingerprintString = [
     ip,
     userAgent,
@@ -104,14 +96,13 @@ function generateDeviceFingerprint(req) {
     secCHUAPlatform,
     req.headers['accept'] || '',
     req.headers['connection'] || '',
-    Date.now().toString().slice(-6) // Add time entropy
+    Date.now().toString().slice(-6)
   ].join('|');
   
-  // Create hash-like fingerprint
   let hash = 0;
   for (let i = 0; i < fingerprintString.length; i++) {
     hash = ((hash << 5) - hash) + fingerprintString.charCodeAt(i);
-    hash = hash & hash; // Convert to 32-bit integer
+    hash = hash & hash;
   }
   
   const fingerprint = `fp_${Math.abs(hash).toString(16)}_${Date.now().toString(36)}`;
@@ -137,21 +128,18 @@ function parseUserAgent(userAgent) {
   let os = 'Unknown';
   let device = 'Unknown';
   
-  // Browser detection
   if (ua.includes('chrome')) browser = 'Chrome';
   else if (ua.includes('firefox')) browser = 'Firefox';
   else if (ua.includes('safari') && !ua.includes('chrome')) browser = 'Safari';
   else if (ua.includes('edge')) browser = 'Edge';
   else if (ua.includes('opera')) browser = 'Opera';
   
-  // OS detection
   if (ua.includes('windows')) os = 'Windows';
   else if (ua.includes('mac os')) os = 'macOS';
   else if (ua.includes('linux')) os = 'Linux';
   else if (ua.includes('android')) os = 'Android';
   else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) os = 'iOS';
   
-  // Device detection
   if (ua.includes('mobile')) device = 'Mobile';
   else if (ua.includes('tablet')) device = 'Tablet';
   else if (ua.includes('bot') || ua.includes('crawler') || ua.includes('spider')) device = 'Bot';
@@ -160,9 +148,8 @@ function parseUserAgent(userAgent) {
   return { browser, os, device };
 }
 
-// Get location from IP with fallback APIs (fixes bug #3)
+// Get location from IP with fallback APIs
 async function getLocationFromIp(ip) {
-  // Handle local IPs
   if (ip === 'unknown' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.')) {
     return {
       ip: ip,
@@ -181,7 +168,6 @@ async function getLocationFromIp(ip) {
     };
   }
 
-  // Try configured APIs
   for (const apiTemplate of CONFIG.GEOLOCATION_APIS) {
     const apiUrl = apiTemplate.replace('{ip}', ip);
     
@@ -244,24 +230,17 @@ async function getLocationFromIp(ip) {
   return null;
 }
 
-// Generate unique ID
-function generateId() {
-  return `loc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
+// ==================== FIREBASE FUNCTIONS ====================
 
-// Store location with automatic cleanup
-function storeLocation(data) {
-  if (!CONFIG.USE_MEMORY_STORAGE) {
-    console.warn('WARNING: Using memory storage. Data will be lost on server restart.');
-  }
-  
-  const id = generateId();
+// Store location in Firebase
+async function storeLocation(data) {
+  const locationId = uuidv4();
   const timestamp = data.timestamp || Date.now();
   const userAgent = data.userAgent || 'unknown';
   const deviceInfo = parseUserAgent(userAgent);
   
   const locationData = {
-    id,
+    location_id: locationId,
     deviceName: data.deviceName || 'Anonymous-Visitor',
     latitude: data.latitude,
     longitude: data.longitude,
@@ -283,28 +262,49 @@ function storeLocation(data) {
     isp: data.isp || null,
     fingerprint: data.fingerprint || null,
     timestamp,
-    storedAt: new Date().toISOString(),
-    formattedTime: new Date(timestamp).toLocaleString(),
+    created_at: new Date().toISOString(),
     method: data.method || 'GET'
   };
   
-  locationStorage.set(id, locationData);
-  
-  // Automatic cleanup (fixes memory growth)
-  if (locationStorage.size > CONFIG.MAX_STORAGE_SIZE) {
-    const keys = Array.from(locationStorage.keys())
-      .slice(0, CONFIG.CLEANUP_BATCH_SIZE);
-    keys.forEach(key => locationStorage.delete(key));
-  }
+  await db.ref(`locations/${locationId}`).set(locationData);
   
   return locationData;
 }
 
-// Get all locations with analytics
-function getAllLocations() {
-  const locations = Array.from(locationStorage.values());
+// Get location by ID from Firebase
+async function getLocationById(id) {
+  const snapshot = await db.ref(`locations/${id}`).once('value');
+  if (snapshot.exists()) {
+    return snapshot.val();
+  }
+  return null;
+}
+
+// Get all locations with analytics from Firebase
+async function getAllLocations() {
+  const snapshot = await db.ref('locations').orderByChild('timestamp').limitToLast(CONFIG.MAX_RETURNED_LOCATIONS).once('value');
   
-  // Group by device
+  if (!snapshot.exists()) {
+    return {
+      totalLocations: 0,
+      totalDevices: 0,
+      devices: [],
+      analytics: {
+        byBrowser: {},
+        byOS: {},
+        byDeviceType: {},
+        byCountry: {},
+        requestsByHour: Array(24).fill(0),
+        topVisitors: []
+      },
+      lastUpdated: new Date().toISOString()
+    };
+  }
+  
+  const locationsObj = snapshot.val();
+  const locations = Object.values(locationsObj);
+  
+  // Group by device name
   const groupedByDevice = {};
   
   locations.forEach(location => {
@@ -334,7 +334,7 @@ function getAllLocations() {
   
   // Convert to array and sort
   const devicesArray = Object.values(groupedByDevice);
-  devicesArray.sort((a, b) => b.lastSeen - a.lastSeen);
+  devicesArray.sort((a, b) => b.lastSeen - a.firstSeen);
   
   devicesArray.forEach(device => {
     device.locations.sort((a, b) => b.timestamp - a.timestamp);
@@ -368,7 +368,7 @@ function getAllLocations() {
     analytics.requestsByHour[hour]++;
   });
   
-  // Fix bug #5: Properly slice top visitors
+  // Get top visitors
   const topVisitors = devicesArray
     .map(device => ({
       deviceName: device.deviceName,
@@ -391,26 +391,90 @@ function getAllLocations() {
   };
 }
 
-// Get single location
-function getLocationById(id) {
-  return locationStorage.get(id) || null;
-}
-
-// Delete location
-function deleteLocation(id) {
-  return locationStorage.delete(id);
-}
-
-// Delete device locations
-function deleteDeviceLocations(deviceName) {
-  const locationsToDelete = Array.from(locationStorage.entries())
-    .filter(([_, location]) => location.deviceName === deviceName);
+// Get locations by device name from Firebase
+async function getLocationsByDevice(deviceName) {
+  const snapshot = await db.ref('locations')
+    .orderByChild('deviceName')
+    .equalTo(deviceName)
+    .once('value');
   
-  locationsToDelete.forEach(([id]) => locationStorage.delete(id));
-  return locationsToDelete.length;
+  if (!snapshot.exists()) {
+    return null;
+  }
+  
+  const locationsObj = snapshot.val();
+  const locations = Object.values(locationsObj).sort((a, b) => b.timestamp - a.timestamp);
+  
+  // Calculate device stats
+  const firstSeen = Math.min(...locations.map(l => l.timestamp));
+  const lastSeen = Math.max(...locations.map(l => l.timestamp));
+  
+  return {
+    deviceName,
+    totalLocations: locations.length,
+    firstSeen,
+    lastSeen,
+    firstSeenFormatted: new Date(firstSeen).toLocaleString(),
+    lastSeenFormatted: new Date(lastSeen).toLocaleString(),
+    locations,
+    deviceInfo: locations[0]?.deviceInfo || {}
+  };
 }
 
-// Secure admin authentication (fixes bug #6)
+// Get locations by fingerprint from Firebase
+async function getLocationsByFingerprint(fingerprint) {
+  const snapshot = await db.ref('locations')
+    .orderByChild('fingerprint')
+    .equalTo(fingerprint)
+    .once('value');
+  
+  if (!snapshot.exists()) {
+    return [];
+  }
+  
+  const locationsObj = snapshot.val();
+  return Object.values(locationsObj).sort((a, b) => b.timestamp - a.timestamp);
+}
+
+// Delete location from Firebase
+async function deleteLocation(id) {
+  await db.ref(`locations/${id}`).remove();
+  return true;
+}
+
+// Delete all locations for a device from Firebase
+async function deleteDeviceLocations(deviceName) {
+  const snapshot = await db.ref('locations')
+    .orderByChild('deviceName')
+    .equalTo(deviceName)
+    .once('value');
+  
+  if (!snapshot.exists()) {
+    return 0;
+  }
+  
+  const locations = snapshot.val();
+  const deletePromises = Object.keys(locations).map(key => 
+    db.ref(`locations/${key}`).remove()
+  );
+  
+  await Promise.all(deletePromises);
+  return Object.keys(locations).length;
+}
+
+// Delete all locations from Firebase
+async function deleteAllLocations() {
+  const snapshot = await db.ref('locations').once('value');
+  if (!snapshot.exists()) {
+    return 0;
+  }
+  
+  const locations = snapshot.val();
+  await db.ref('locations').remove();
+  return Object.keys(locations).length;
+}
+
+// Secure admin authentication
 function isAdminAuthenticated(req) {
   const authHeader = req.headers.authorization;
   
@@ -420,9 +484,6 @@ function isAdminAuthenticated(req) {
   }
   
   const token = authHeader.replace('Bearer ', '');
-  
-  // Simple comparison (for demo)
-  // In production, use timing-safe comparison: crypto.timingSafeEqual()
   return token === CONFIG.ADMIN_SECRET;
 }
 
@@ -431,7 +492,7 @@ function isAdminAuthenticated(req) {
 export default async function handler(req, res) {
   const { method, query: params, body } = req;
 
-  // Enhanced CORS headers (fixes bug #7)
+  // Enhanced CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
   res.setHeader('Access-Control-Allow-Headers', CONFIG.CORS_ALLOW_HEADERS);
@@ -444,6 +505,7 @@ export default async function handler(req, res) {
     // Rate limiting
     if (!checkRateLimit(req)) {
       return res.status(429).json({ 
+        success: false,
         error: 'Too many requests. Please try again later.' 
       });
     }
@@ -457,13 +519,16 @@ export default async function handler(req, res) {
       case 'DELETE':
         return await handleDelete(req, res, params);
       default:
-        return res.status(405).json({ error: 'Method not allowed' });
+        return res.status(405).json({ 
+          success: false,
+          error: 'Method not allowed' 
+        });
     }
   } catch (error) {
     console.error('API Error:', error);
     return res.status(500).json({ 
+      success: false,
       error: 'Internal server error',
-      // Only show details in development
       ...(process.env.NODE_ENV === 'development' && { details: error.message })
     });
   }
@@ -481,7 +546,7 @@ async function handleGet(req, res, params) {
 
   // Analytics view
   if (view === 'analytics') {
-    const allData = getAllLocations();
+    const allData = await getAllLocations();
     return res.status(200).json({
       success: true,
       analytics: allData.analytics,
@@ -495,19 +560,27 @@ async function handleGet(req, res, params) {
 
   // Get specific location
   if (id) {
-    const location = getLocationById(id);
+    const location = await getLocationById(id);
     return location ? 
-      res.status(200).json({ success: true, location }) :
-      res.status(404).json({ error: 'Location not found' });
+      res.status(200).json({ 
+        success: true, 
+        location 
+      }) :
+      res.status(404).json({ 
+        success: false,
+        error: 'Location not found' 
+      });
   }
 
   // Get device data
   if (device) {
-    const allData = getAllLocations();
-    const deviceData = allData.devices.find(d => d.deviceName === device);
+    const deviceData = await getLocationsByDevice(device);
     
     if (!deviceData) {
-      return res.status(404).json({ error: `Device not found: ${device}` });
+      return res.status(404).json({ 
+        success: false,
+        error: `Device not found: ${device}` 
+      });
     }
     
     return res.status(200).json({
@@ -525,11 +598,14 @@ async function handleGet(req, res, params) {
     const location = await getLocationFromIp(ip);
     
     if (!location) {
-      return res.status(404).json({ error: 'Unable to fetch location for IP' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Unable to fetch location for IP' 
+      });
     }
     
     const fingerprintData = generateDeviceFingerprint(req);
-    const storedLocation = storeLocation({
+    const storedLocation = await storeLocation({
       ...location,
       deviceName: `IP-Lookup-${ip.substring(0, 8)}`,
       source: 'ip-lookup',
@@ -546,15 +622,45 @@ async function handleGet(req, res, params) {
 
   // Get by fingerprint
   if (fingerprint) {
-    const locations = Array.from(locationStorage.values())
-      .filter(loc => loc.fingerprint === fingerprint)
-      .sort((a, b) => b.timestamp - a.timestamp);
+    const locations = await getLocationsByFingerprint(fingerprint);
     
     return res.status(200).json({
       success: true,
       count: locations.length,
       fingerprint,
       locations
+    });
+  }
+
+  // Get all data
+  if (view === 'all') {
+    const allData = await getAllLocations();
+    
+    if (format === 'simple') {
+      const simpleData = allData.devices.map(device => ({
+        deviceName: device.deviceName,
+        totalLocations: device.totalLocations,
+        lastSeen: device.lastSeenFormatted,
+        deviceInfo: device.deviceInfo,
+        lastLocation: device.locations[0] ? {
+          latitude: device.locations[0].latitude,
+          longitude: device.locations[0].longitude,
+          city: device.locations[0].city,
+          timestamp: device.locations[0].timestamp
+        } : null
+      }));
+      
+      return res.status(200).json({
+        success: true,
+        totalDevices: allData.totalDevices,
+        totalLocations: allData.totalLocations,
+        devices: simpleData
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      ...allData
     });
   }
 
@@ -570,7 +676,7 @@ async function handleRegularApiCall(req, res) {
   const deviceName = `Visitor-${fingerprintData.fingerprint.substring(0, 8)}`;
   const ipLocation = await getLocationFromIp(clientIP);
   
-  const storedLocation = storeLocation({
+  const storedLocation = await storeLocation({
     deviceName,
     latitude: ipLocation?.latitude || null,
     longitude: ipLocation?.longitude || null,
@@ -589,7 +695,7 @@ async function handleRegularApiCall(req, res) {
     success: true,
     message: 'Visitor information collected successfully',
     visitor: {
-      id: storedLocation.id,
+      id: storedLocation.location_id,
       deviceName: storedLocation.deviceName,
       ip: clientIP,
       location: ipLocation ? {
@@ -623,7 +729,10 @@ async function handlePost(req, res, params, body) {
     return await handleBulkLocation(res, body, req);
   }
 
-  return res.status(400).json({ error: 'Invalid action' });
+  return res.status(400).json({ 
+    success: false,
+    error: 'Invalid action' 
+  });
 }
 
 async function handleDeviceGeolocation(res, body, req) {
@@ -657,11 +766,12 @@ async function handleDeviceGeolocation(res, body, req) {
   // Simple validation
   if (!sanitizedData.latitude || !sanitizedData.longitude) {
     return res.status(400).json({ 
+      success: false,
       error: 'Latitude and longitude are required' 
     });
   }
 
-  const storedLocation = storeLocation(sanitizedData);
+  const storedLocation = await storeLocation(sanitizedData);
 
   return res.status(200).json({
     success: true,
@@ -677,11 +787,17 @@ async function handleBulkLocation(res, body, req) {
   const fingerprintData = generateDeviceFingerprint(req);
   
   if (!Array.isArray(locations) || locations.length === 0) {
-    return res.status(400).json({ error: 'Array of locations required' });
+    return res.status(400).json({ 
+      success: false,
+      error: 'Array of locations required' 
+    });
   }
 
   if (locations.length > 100) {
-    return res.status(400).json({ error: 'Maximum 100 locations per request' });
+    return res.status(400).json({ 
+      success: false,
+      error: 'Maximum 100 locations per request' 
+    });
   }
 
   const storedLocations = [];
@@ -696,7 +812,7 @@ async function handleBulkLocation(res, body, req) {
         continue;
       }
       
-      const storedLoc = storeLocation({
+      const storedLoc = await storeLocation({
         ...loc,
         deviceName: deviceNameToUse,
         ip: loc.ip || getClientIp(req),
@@ -705,7 +821,7 @@ async function handleBulkLocation(res, body, req) {
         ...fingerprintData
       });
       
-      storedLocations.push(storedLoc.id);
+      storedLocations.push(storedLoc.location_id);
     } catch (error) {
       errors.push({ location: loc, error: error.message });
     }
@@ -726,17 +842,18 @@ async function handleBulkLocation(res, body, req) {
 
 async function handleDelete(req, res, params) {
   const { id, device, all } = params;
-  
-  // Admin authentication (fixes bug #6)
+
+  // Admin authentication
   if (!isAdminAuthenticated(req)) {
     return res.status(401).json({ 
+      success: false,
       error: 'Unauthorized. Valid admin token required.' 
     });
   }
 
   // Delete location
   if (id) {
-    const deleted = deleteLocation(id);
+    const deleted = await deleteLocation(id);
     return res.status(deleted ? 200 : 404).json({
       success: deleted,
       message: deleted ? `Location ${id} deleted` : 'Location not found'
@@ -745,7 +862,7 @@ async function handleDelete(req, res, params) {
 
   // Delete device
   if (device) {
-    const count = deleteDeviceLocations(device);
+    const count = await deleteDeviceLocations(device);
     return res.status(200).json({
       success: true,
       message: `Deleted ${count} locations for device: ${device}`
@@ -754,8 +871,8 @@ async function handleDelete(req, res, params) {
 
   // Delete all
   if (all === 'true') {
-    const count = locationStorage.size;
-    locationStorage.clear();
+    const count = await deleteAllLocations();
+    // Also clear rate limit storage
     rateLimitStorage.clear();
     
     return res.status(200).json({
@@ -765,14 +882,15 @@ async function handleDelete(req, res, params) {
   }
 
   return res.status(400).json({ 
+    success: false,
     error: 'Specify id, device, or all=true to delete' 
   });
 }
 
 // ==================== DASHBOARD VIEW ====================
 
-function getDashboardView(res) {
-  const allData = getAllLocations();
+async function getDashboardView(res) {
+  const allData = await getAllLocations();
   
   const html = `
 <!DOCTYPE html>
@@ -903,15 +1021,15 @@ function getDashboardView(res) {
         }
         .refresh-btn:hover { transform: rotate(90deg); }
         
-        .warning-banner {
-            background: #fed7d7;
-            border: 2px solid #fc8181;
+        .success-banner {
+            background: #c6f6d5;
+            border: 2px solid #48bb78;
             border-radius: 10px;
             padding: 15px;
             margin-bottom: 20px;
-            color: #742a2a;
+            color: #22543d;
         }
-        .warning-banner i { color: #e53e3e; margin-right: 10px; }
+        .success-banner i { color: #48bb78; margin-right: 10px; }
         
         @media (max-width: 768px) {
             .grid-2 { grid-template-columns: 1fr; }
@@ -922,10 +1040,10 @@ function getDashboardView(res) {
 </head>
 <body>
     <div class="container">
-        <div class="warning-banner">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>DEMO MODE:</strong> Data is stored in memory and will be lost on server restart.
-            For production, implement persistent storage (Redis, Firebase, PostgreSQL).
+        <div class="success-banner">
+            <i class="fas fa-database"></i>
+            <strong>FIREBASE STORAGE:</strong> All data is persistently stored in Firebase Realtime Database.
+            Data will persist across server restarts and deployments.
         </div>
         
         <div class="header">
@@ -1066,7 +1184,7 @@ function getDashboardView(res) {
                     <p>Call the API endpoint to automatically track visitor information:</p>
                     <div class="code-block">
 // Simple GET request - auto-collects visitor data<br>
-fetch('/api/location')<br>
+fetch('https://mytalknote.vercel.app/api/location')<br>
   .then(response => response.json())<br>
   .then(data => console.log(data));<br><br>
 // Response includes your fingerprint URL<br>
@@ -1075,7 +1193,7 @@ fetch('/api/location')<br>
                     
                     <h3><i class="fas fa-upload"></i> Submit Device Location</h3>
                     <div class="code-block">
-fetch('/api/location', {<br>
+fetch('https://mytalknote.vercel.app/api/location', {<br>
   method: 'POST',<br>
   headers: { 'Content-Type': 'application/json' },<br>
   body: JSON.stringify({<br>
@@ -1090,22 +1208,22 @@ fetch('/api/location', {<br>
                     <h3><i class="fas fa-database"></i> View Data</h3>
                     <div class="code-block">
 // Get all data<br>
-fetch('/api/location?view=all')<br>
+fetch('https://mytalknote.vercel.app/api/location?view=all')<br>
 <br>
 // Get analytics<br>
-fetch('/api/location?view=analytics')<br>
+fetch('https://mytalknote.vercel.app/api/location?view=analytics')<br>
 <br>
 // Get device data<br>
-fetch('/api/location?device=Device-Name')<br>
+fetch('https://mytalknote.vercel.app/api/location?device=Device-Name')<br>
 <br>
 // IP lookup<br>
-fetch('/api/location?ip=8.8.8.8')
+fetch('https://mytalknote.vercel.app/api/location?ip=8.8.8.8')
                     </div>
                     
                     <h3><i class="fas fa-trash"></i> Admin Operations</h3>
                     <div class="code-block">
 // Delete all data (requires admin token)<br>
-fetch('/api/location?all=true', {<br>
+fetch('https://mytalknote.vercel.app/api/location?all=true', {<br>
   method: 'DELETE',<br>
   headers: {<br>
     'Authorization': 'Bearer ADMIN_SECRET_TOKEN'<br>
