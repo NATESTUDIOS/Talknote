@@ -1,7 +1,7 @@
 // api/location.js
 import axios from 'axios';
 
-// In-memory storage for location data (optional - you can add Firebase back if needed)
+// In-memory storage for location data
 const locationStorage = new Map();
 
 // Rate limiting storage
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (method === 'OPTIONS') {
@@ -33,6 +33,8 @@ export default async function handler(req, res) {
       return await handleGet(req, res, params);
     } else if (method === 'POST') {
       return await handlePost(req, res, params, body);
+    } else if (method === 'DELETE') {
+      return await handleDelete(req, res, params);
     } else {
       return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -77,6 +79,11 @@ function sanitizeInput(input) {
 function validateLocationData(data) {
   const errors = [];
 
+  // Required fields validation
+  if (!data.deviceName || data.deviceName.trim().length < 1) {
+    errors.push('Device name is required');
+  }
+
   // For POST requests requiring lat/lng
   if (data.latitude !== undefined && data.longitude !== undefined) {
     const lat = parseFloat(data.latitude);
@@ -95,6 +102,14 @@ function validateLocationData(data) {
     }
   }
 
+  // Validate timestamp if provided
+  if (data.timestamp !== undefined) {
+    const timestamp = parseInt(data.timestamp);
+    if (isNaN(timestamp) || timestamp < 0) {
+      errors.push('Invalid timestamp');
+    }
+  }
+
   return errors;
 }
 
@@ -108,6 +123,11 @@ function getClientIp(req) {
          req.socket?.remoteAddress || 
          req.ip || 
          'unknown';
+}
+
+// Generate unique ID
+function generateId() {
+  return `loc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
 // Get location from IP using multiple free APIs
@@ -214,14 +234,31 @@ async function getLocationFromIp(ip) {
   return null;
 }
 
-// Store location in memory (optional - can be replaced with Firebase)
+// Store location
 function storeLocation(data) {
-  const id = `loc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const id = generateId();
+  const timestamp = data.timestamp || Date.now();
+  
   const locationData = {
     id,
-    ...data,
-    timestamp: Date.now(),
-    storedAt: new Date().toISOString()
+    deviceName: data.deviceName || 'Unknown Device',
+    latitude: data.latitude,
+    longitude: data.longitude,
+    accuracy: data.accuracy || null,
+    altitude: data.altitude || null,
+    altitudeAccuracy: data.altitudeAccuracy || null,
+    speed: data.speed || null,
+    heading: data.heading || null,
+    ip: data.ip || 'unknown',
+    source: data.source || 'unknown',
+    userAgent: data.userAgent || 'unknown',
+    deviceInfo: data.deviceInfo || {},
+    city: data.city || null,
+    country: data.country || null,
+    region: data.region || null,
+    timestamp: timestamp,
+    storedAt: new Date().toISOString(),
+    formattedTime: new Date(timestamp).toLocaleString()
   };
   
   locationStorage.set(id, locationData);
@@ -235,24 +272,186 @@ function storeLocation(data) {
   return locationData;
 }
 
-// Get recent locations from memory
-function getRecentLocations(limit = 50) {
+// Get all locations grouped by device
+function getAllLocations() {
   const locations = Array.from(locationStorage.values());
-  return locations
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, limit);
+  
+  // Group by device name
+  const groupedByDevice = {};
+  
+  locations.forEach(location => {
+    const deviceName = location.deviceName;
+    if (!groupedByDevice[deviceName]) {
+      groupedByDevice[deviceName] = {
+        deviceName: deviceName,
+        totalLocations: 0,
+        firstSeen: null,
+        lastSeen: null,
+        locations: []
+      };
+    }
+    
+    groupedByDevice[deviceName].locations.push(location);
+    groupedByDevice[deviceName].totalLocations++;
+    
+    // Update first and last seen
+    if (!groupedByDevice[deviceName].firstSeen || location.timestamp < groupedByDevice[deviceName].firstSeen) {
+      groupedByDevice[deviceName].firstSeen = location.timestamp;
+    }
+    if (!groupedByDevice[deviceName].lastSeen || location.timestamp > groupedByDevice[deviceName].lastSeen) {
+      groupedByDevice[deviceName].lastSeen = location.timestamp;
+    }
+  });
+  
+  // Convert to array and sort by last seen (newest first)
+  const devicesArray = Object.values(groupedByDevice);
+  devicesArray.sort((a, b) => b.lastSeen - a.lastSeen);
+  
+  // Sort locations within each device by timestamp (newest first)
+  devicesArray.forEach(device => {
+    device.locations.sort((a, b) => b.timestamp - a.timestamp);
+    device.firstSeenFormatted = new Date(device.firstSeen).toLocaleString();
+    device.lastSeenFormatted = new Date(device.lastSeen).toLocaleString();
+  });
+  
+  return {
+    totalLocations: locations.length,
+    totalDevices: devicesArray.length,
+    devices: devicesArray,
+    lastUpdated: new Date().toISOString()
+  };
+}
+
+// Get locations for specific device
+function getLocationsByDevice(deviceName) {
+  const allLocations = getAllLocations();
+  const device = allLocations.devices.find(d => d.deviceName === deviceName);
+  
+  return device || null;
+}
+
+// Get single location by ID
+function getLocationById(id) {
+  return locationStorage.get(id) || null;
+}
+
+// Delete location by ID
+function deleteLocation(id) {
+  return locationStorage.delete(id);
+}
+
+// Delete all locations for a device
+function deleteDeviceLocations(deviceName) {
+  const locationsToDelete = Array.from(locationStorage.entries())
+    .filter(([_, location]) => location.deviceName === deviceName);
+  
+  locationsToDelete.forEach(([id, _]) => locationStorage.delete(id));
+  
+  return locationsToDelete.length;
 }
 
 // ==================== GET REQUEST HANDLER ====================
 
 async function handleGet(req, res, params) {
   const { 
+    view,
+    device,
+    id,
     ip, 
-    recent, 
-    format, 
-    map, 
-    limit = 50 
+    format,
+    limit,
+    since
   } = params;
+
+  // Dashboard view - shows all devices and locations
+  if (view === 'dashboard') {
+    return getDashboardView(res);
+  }
+
+  // Get specific location by ID
+  if (id) {
+    const location = getLocationById(id);
+    
+    if (!location) {
+      return res.status(404).json({ 
+        error: 'Location not found' 
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      location
+    });
+  }
+
+  // Get locations for specific device
+  if (device) {
+    const deviceData = getLocationsByDevice(device);
+    
+    if (!deviceData) {
+      return res.status(404).json({ 
+        error: `No locations found for device: ${device}` 
+      });
+    }
+    
+    // Filter by timestamp if since parameter is provided
+    if (since) {
+      const sinceTimestamp = parseInt(since);
+      if (!isNaN(sinceTimestamp)) {
+        deviceData.locations = deviceData.locations.filter(
+          loc => loc.timestamp >= sinceTimestamp
+        );
+      }
+    }
+    
+    // Limit results if specified
+    if (limit) {
+      const limitNum = parseInt(limit);
+      if (!isNaN(limitNum) && limitNum > 0) {
+        deviceData.locations = deviceData.locations.slice(0, limitNum);
+      }
+    }
+    
+    return res.status(200).json({
+      success: true,
+      device: deviceData.deviceName,
+      totalLocations: deviceData.totalLocations,
+      firstSeen: deviceData.firstSeenFormatted,
+      lastSeen: deviceData.lastSeenFormatted,
+      locations: deviceData.locations
+    });
+  }
+
+  // Get all locations grouped by device
+  if (view === 'all' || !view) {
+    const allData = getAllLocations();
+    
+    if (format === 'simple') {
+      const simpleData = allData.devices.map(device => ({
+        deviceName: device.deviceName,
+        totalLocations: device.totalLocations,
+        lastSeen: device.lastSeenFormatted,
+        lastLocation: device.locations[0] ? {
+          latitude: device.locations[0].latitude,
+          longitude: device.locations[0].longitude,
+          city: device.locations[0].city,
+          timestamp: device.locations[0].formattedTime
+        } : null
+      }));
+      
+      return res.status(200).json({
+        success: true,
+        totalDevices: allData.totalDevices,
+        totalLocations: allData.totalLocations,
+        devices: simpleData
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      ...allData
+    });
+  }
 
   // Get location for specific IP
   if (ip) {
@@ -264,35 +463,19 @@ async function handleGet(req, res, params) {
       });
     }
     
-    // Store in memory
-    storeLocation({
+    // Store with generic device name
+    const storedLocation = storeLocation({
       ...location,
-      source: 'ip-parameter',
-      requestedIp: ip
+      deviceName: `IP_${ip}`,
+      source: 'ip-lookup',
+      ip: ip
     });
     
     return res.status(200).json({
       success: true,
-      location,
+      location: storedLocation,
       timestamp: new Date().toISOString()
     });
-  }
-
-  // Get recent locations
-  if (recent === 'true') {
-    const recentLocations = getRecentLocations(parseInt(limit));
-    
-    return res.status(200).json({
-      success: true,
-      count: recentLocations.length,
-      locations: recentLocations,
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  // Map view endpoint (returns HTML with map)
-  if (map === 'true') {
-    return getMapView(res);
   }
 
   // Default: Get location from requester's IP
@@ -305,50 +488,22 @@ async function handleGet(req, res, params) {
     });
   }
   
-  // Store in memory
+  // Store with device name based on IP
   const storedLocation = storeLocation({
     ...location,
+    deviceName: `IP_${clientIP}`,
     source: 'auto-detect',
     clientIP,
     userAgent: req.headers['user-agent'] || 'unknown',
     method: 'GET'
   });
   
-  // Different response formats
-  if (format === 'simple') {
-    return res.status(200).json({
-      latitude: location.latitude,
-      longitude: location.longitude,
-      city: location.city,
-      country: location.country
-    });
-  }
-  
-  if (format === 'geojson') {
-    return res.status(200).json({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: [location.longitude, location.latitude]
-      },
-      properties: {
-        city: location.city,
-        country: location.country,
-        accuracy: location.accuracy,
-        source: location.source,
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
-  
-  // Full response
   return res.status(200).json({
     success: true,
-    location,
+    location: storedLocation,
     clientIP,
     storedId: storedLocation.id,
-    timestamp: new Date().toISOString(),
-    mapUrl: `${req.headers.host}/api/location?map=true&lat=${location.latitude}&lng=${location.longitude}`
+    timestamp: new Date().toISOString()
   });
 }
 
@@ -367,16 +522,6 @@ async function handlePost(req, res, params, body) {
     return await handleBulkLocation(res, body, req);
   }
 
-  // Admin actions (if needed)
-  const adminSecret = process.env.LOCATION_ADMIN_SECRET;
-  if (adminSecret && req.headers.authorization !== `Bearer ${adminSecret}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  if (action === 'clear') {
-    return await handleClearStorage(res);
-  }
-
   return res.status(400).json({ error: 'Invalid action' });
 }
 
@@ -384,6 +529,7 @@ async function handlePost(req, res, params, body) {
 async function handleDeviceGeolocation(res, body, req) {
   // Sanitize input data
   const sanitizedData = {
+    deviceName: sanitizeInput(body.deviceName || `Device_${Date.now()}`),
     latitude: body.latitude,
     longitude: body.longitude,
     accuracy: body.accuracy,
@@ -391,11 +537,15 @@ async function handleDeviceGeolocation(res, body, req) {
     altitudeAccuracy: body.altitudeAccuracy,
     speed: body.speed,
     heading: body.heading,
+    timestamp: body.timestamp || Date.now(),
     source: sanitizeInput(body.source || 'device-geolocation'),
     deviceInfo: body.deviceInfo || {},
     ip: body.ip || getClientIp(req),
     userAgent: req.headers['user-agent'] || 'unknown',
-    method: 'POST'
+    method: 'POST',
+    city: body.city,
+    country: body.country,
+    region: body.region
   };
 
   // Validate location data
@@ -414,13 +564,13 @@ async function handleDeviceGeolocation(res, body, req) {
     success: true,
     message: 'Device location received successfully',
     location: storedLocation,
-    mapUrl: `${req.headers.host}/api/location?map=true&lat=${storedLocation.latitude}&lng=${storedLocation.longitude}`
+    dashboardUrl: `${req.headers.host}/api/location?view=dashboard`
   });
 }
 
 // Handle bulk location submission
 async function handleBulkLocation(res, body, req) {
-  const { locations } = body;
+  const { locations, deviceName } = body;
   
   if (!Array.isArray(locations) || locations.length === 0) {
     return res.status(400).json({ 
@@ -439,10 +589,17 @@ async function handleBulkLocation(res, body, req) {
 
   for (const loc of locations) {
     try {
-      const validationErrors = validateLocationData(loc);
+      const deviceNameToUse = deviceName || loc.deviceName || `Device_${Date.now()}`;
+      
+      const validationErrors = validateLocationData({
+        ...loc,
+        deviceName: deviceNameToUse
+      });
+      
       if (validationErrors.length === 0) {
         const storedLoc = storeLocation({
           ...loc,
+          deviceName: deviceNameToUse,
           ip: loc.ip || getClientIp(req),
           userAgent: req.headers['user-agent'] || 'unknown',
           method: 'BULK_POST'
@@ -471,242 +628,634 @@ async function handleBulkLocation(res, body, req) {
   });
 }
 
-// Clear storage (admin only)
-async function handleClearStorage(res) {
-  const count = locationStorage.size;
-  locationStorage.clear();
+// ==================== DELETE REQUEST HANDLER ====================
+
+async function handleDelete(req, res, params) {
+  const { id, device, all } = params;
   
-  return res.status(200).json({
-    success: true,
-    message: `Cleared ${count} locations from storage`
+  // Admin check (optional)
+  const adminSecret = process.env.LOCATION_ADMIN_SECRET;
+  if (adminSecret && req.headers.authorization !== `Bearer ${adminSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // Delete specific location
+  if (id) {
+    const deleted = deleteLocation(id);
+    
+    if (!deleted) {
+      return res.status(404).json({ 
+        error: 'Location not found' 
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: `Location ${id} deleted successfully`
+    });
+  }
+
+  // Delete all locations for a device
+  if (device) {
+    const count = deleteDeviceLocations(device);
+    
+    return res.status(200).json({
+      success: true,
+      message: `Deleted ${count} locations for device: ${device}`
+    });
+  }
+
+  // Delete all locations
+  if (all === 'true') {
+    const count = locationStorage.size;
+    locationStorage.clear();
+    
+    return res.status(200).json({
+      success: true,
+      message: `Deleted all ${count} locations`
+    });
+  }
+
+  return res.status(400).json({ 
+    error: 'Specify id, device, or all=true to delete' 
   });
 }
 
-// ==================== MAP VIEW FUNCTION ====================
+// ==================== DASHBOARD VIEW FUNCTION ====================
 
-function getMapView(res) {
+function getDashboardView(res) {
+  const allData = getAllLocations();
+  
   const html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Location Map</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>Location Tracker Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        #map { height: 100vh; width: 100%; }
-        .controls {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
             background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             display: flex;
-            gap: 10px;
+            justify-content: space-between;
             align-items: center;
         }
-        button {
-            background: #0070f3;
-            color: white;
-            border: none;
-            padding: 10px 20px;
+        h1 {
+            color: #333;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h1 i { color: #667eea; }
+        .stats {
+            display: flex;
+            gap: 20px;
+        }
+        .stat-box {
+            background: #f8f9fa;
+            padding: 15px 25px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 150px;
+        }
+        .stat-box h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .stat-box .number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+        }
+        .devices-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .devices-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .devices-header h2 {
+            color: #333;
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .search-box {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            width: 300px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .device-list {
+            display: grid;
+            gap: 15px;
+        }
+        .device-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .device-card:hover {
+            background: #eef2ff;
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+        }
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .device-name {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .device-name i {
+            color: #667eea;
+        }
+        .device-meta {
+            display: flex;
+            gap: 15px;
+            color: #666;
+            font-size: 14px;
+        }
+        .device-locations {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        .location-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .location-item:last-child {
+            border-bottom: none;
+        }
+        .location-coords {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 5px 10px;
             border-radius: 5px;
+        }
+        .location-time {
+            color: #666;
+            font-size: 14px;
+        }
+        .no-devices {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+            font-size: 18px;
+        }
+        .no-devices i {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ccc;
+        }
+        .device-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s;
         }
-        button:hover { background: #0051cc; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        .status {
-            padding: 8px 12px;
-            background: #f0f0f0;
-            border-radius: 4px;
-            min-width: 200px;
+        .btn-view {
+            background: #667eea;
+            color: white;
         }
-        .info-panel {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
+        .btn-view:hover {
+            background: #5a6fd8;
+        }
+        .btn-map {
+            background: #10b981;
+            color: white;
+        }
+        .btn-map:hover {
+            background: #0da271;
+        }
+        .btn-delete {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-delete:hover {
+            background: #dc2626;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
             z-index: 1000;
+        }
+        .modal-content {
             background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .modal-header h2 {
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        .location-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .detail-item {
+            background: #f8f9fa;
             padding: 15px;
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            max-width: 300px;
         }
-        .info-item { margin: 5px 0; }
-        .label { font-weight: 600; color: #666; }
+        .detail-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .detail-value {
+            font-size: 16px;
+            color: #333;
+            font-weight: 500;
+        }
+        .map-container {
+            height: 300px;
+            width: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+            font-size: 24px;
+            color: #667eea;
+        }
+        .refresh-btn:hover {
+            transform: rotate(90deg);
+        }
     </style>
 </head>
 <body>
-    <div class="controls">
-        <button onclick="getDeviceLocation()">📍 Get My Location</button>
-        <button onclick="getIPLocation()">🌐 Get IP Location</button>
-        <div class="status" id="status">Ready</div>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-map-marker-alt"></i> Location Tracker Dashboard</h1>
+            <div class="stats">
+                <div class="stat-box">
+                    <h3>Total Devices</h3>
+                    <div class="number">${allData.totalDevices}</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Total Locations</h3>
+                    <div class="number">${allData.totalLocations}</div>
+                </div>
+                <div class="stat-box">
+                    <h3>Last Updated</h3>
+                    <div class="number" id="updateTime">Now</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="devices-container">
+            <div class="devices-header">
+                <h2><i class="fas fa-mobile-alt"></i> Tracked Devices</h2>
+                <input type="text" class="search-box" placeholder="Search devices..." id="searchInput">
+            </div>
+            
+            <div class="device-list" id="deviceList">
+                ${allData.totalDevices === 0 ? 
+                    '<div class="no-devices"><i class="fas fa-map-marked-alt"></i><p>No devices tracked yet. Submit your first location!</p></div>' : 
+                    allData.devices.map(device => `
+                        <div class="device-card" data-device="${device.deviceName}">
+                            <div class="device-header">
+                                <div>
+                                    <div class="device-name">
+                                        <i class="fas fa-mobile-alt"></i>
+                                        ${device.deviceName}
+                                    </div>
+                                    <div class="device-meta">
+                                        <span><i class="fas fa-database"></i> ${device.totalLocations} locations</span>
+                                        <span><i class="fas fa-clock"></i> First: ${device.firstSeenFormatted}</span>
+                                        <span><i class="fas fa-history"></i> Last: ${device.lastSeenFormatted}</span>
+                                    </div>
+                                </div>
+                                <div class="device-actions">
+                                    <button class="btn btn-view" onclick="viewDevice('${device.deviceName}')">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
+                                    <button class="btn btn-map" onclick="viewOnMap('${device.deviceName}')">
+                                        <i class="fas fa-map"></i> Map
+                                    </button>
+                                </div>
+                            </div>
+                            ${device.locations.length > 0 ? `
+                                <div class="device-locations">
+                                    <div class="location-item">
+                                        <div class="location-coords">
+                                            ${device.locations[0].latitude.toFixed(6)}, ${device.locations[0].longitude.toFixed(6)}
+                                        </div>
+                                        <div class="location-time">
+                                            ${device.locations[0].formattedTime}
+                                        </div>
+                                    </div>
+                                    ${device.totalLocations > 1 ? 
+                                        '<div style="text-align: center; padding: 10px; color: #666;">... and ' + (device.totalLocations - 1) + ' more locations</div>' : ''}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `).join('')
+                }
+            </div>
+        </div>
     </div>
     
-    <div id="map"></div>
+    <!-- Device Details Modal -->
+    <div class="modal" id="deviceModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-mobile-alt"></i> <span id="modalDeviceName"></span></h2>
+                <button class="close-modal" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalContent">
+                <!-- Device details will be loaded here -->
+            </div>
+        </div>
+    </div>
     
-    <div class="info-panel" id="infoPanel" style="display: none;">
-        <h3>Location Details</h3>
-        <div class="info-item"><span class="label">Latitude:</span> <span id="infoLat">-</span></div>
-        <div class="info-item"><span class="label">Longitude:</span> <span id="infoLng">-</span></div>
-        <div class="info-item"><span class="label">Accuracy:</span> <span id="infoAccuracy">-</span> meters</div>
-        <div class="info-item"><span class="label">City:</span> <span id="infoCity">-</span></div>
-        <div class="info-item"><span class="label">Country:</span> <span id="infoCountry">-</span></div>
+    <!-- Refresh Button -->
+    <div class="refresh-btn" onclick="refreshData()">
+        <i class="fas fa-redo"></i>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        let map = null;
-        let marker = null;
+        let allDevices = ${JSON.stringify(allData.devices)};
         
-        // Initialize map
-        function initMap(lat = 40.7128, lng = -74.0060) {
-            if (!map) {
-                map = L.map('map').setView([lat, lng], 13);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors'
-                }).addTo(map);
-            }
-            return map;
-        }
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const deviceCards = document.querySelectorAll('.device-card');
+            
+            deviceCards.forEach(card => {
+                const deviceName = card.getAttribute('data-device').toLowerCase();
+                if (deviceName.includes(searchTerm)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
         
-        // Update location on map
-        function updateLocation(lat, lng, accuracy = null, details = {}) {
-            initMap(lat, lng);
-            
-            // Remove previous marker
-            if (marker) map.removeLayer(marker);
-            
-            // Add new marker
-            marker = L.marker([lat, lng]).addTo(map)
-                .bindPopup(\`<b>Location:</b><br>Lat: \${lat.toFixed(6)}<br>Lng: \${lng.toFixed(6)}<br>City: \${details.city || 'Unknown'}\`);
-            
-            // Add accuracy circle if available
-            if (accuracy && accuracy > 0) {
-                L.circle([lat, lng], {
-                    radius: accuracy,
-                    color: '#0070f3',
-                    fillOpacity: 0.2
-                }).addTo(map);
-            }
-            
-            // Update info panel
-            updateInfoPanel(lat, lng, accuracy, details);
-            
-            // Center map
-            const zoom = accuracy ? Math.max(13, Math.round(18 - Math.log2(accuracy/50))) : 13;
-            map.setView([lat, lng], zoom);
-        }
-        
-        // Update info panel
-        function updateInfoPanel(lat, lng, accuracy, details) {
-            document.getElementById('infoPanel').style.display = 'block';
-            document.getElementById('infoLat').textContent = lat.toFixed(6);
-            document.getElementById('infoLng').textContent = lng.toFixed(6);
-            document.getElementById('infoAccuracy').textContent = accuracy ? accuracy.toFixed(0) : 'N/A';
-            document.getElementById('infoCity').textContent = details.city || 'Unknown';
-            document.getElementById('infoCountry').textContent = details.country || 'Unknown';
-        }
-        
-        // Get device location using browser geolocation API
-        async function getDeviceLocation() {
-            document.getElementById('status').textContent = 'Requesting device location...';
-            
-            if (!navigator.geolocation) {
-                document.getElementById('status').textContent = 'Geolocation not supported by browser';
-                return;
-            }
-            
+        // View device details
+        async function viewDevice(deviceName) {
             try {
-                const position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 0
-                    });
-                });
-                
-                const { latitude, longitude, accuracy } = position.coords;
-                
-                // Update status and map
-                document.getElementById('status').textContent = \`Device location: \${accuracy.toFixed(0)}m accuracy\`;
-                updateLocation(latitude, longitude, accuracy, { source: 'Device GPS' });
-                
-                // Send to API
-                const response = await fetch('/api/location', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        latitude,
-                        longitude,
-                        accuracy,
-                        altitude: position.coords.altitude,
-                        altitudeAccuracy: position.coords.altitudeAccuracy,
-                        speed: position.coords.speed,
-                        heading: position.coords.heading,
-                        source: 'device-geolocation'
-                    })
-                });
-                
-                const data = await response.json();
-                console.log('Location sent to API:', data);
-                
-            } catch (error) {
-                document.getElementById('status').textContent = \`Error: \${error.message}\`;
-                console.error('Geolocation error:', error);
-            }
-        }
-        
-        // Get location from IP via API
-        async function getIPLocation() {
-            document.getElementById('status').textContent = 'Getting IP location...';
-            
-            try {
-                const response = await fetch('/api/location');
+                const response = await fetch(\`/api/location?device=\${encodeURIComponent(deviceName)}\`);
                 const data = await response.json();
                 
                 if (data.success) {
-                    const loc = data.location;
-                    document.getElementById('status').textContent = \`IP location: \${loc.city || 'Unknown location'}\`;
+                    const device = data;
+                    const modalContent = document.getElementById('modalContent');
+                    const modal = document.getElementById('deviceModal');
                     
-                    updateLocation(loc.latitude, loc.longitude, loc.accuracy, {
-                        city: loc.city,
-                        country: loc.country,
-                        source: 'IP Geolocation'
-                    });
-                } else {
-                    document.getElementById('status').textContent = 'Failed to get IP location';
+                    document.getElementById('modalDeviceName').textContent = deviceName;
+                    
+                    // Generate device details HTML
+                    modalContent.innerHTML = \`
+                        <div class="location-details">
+                            <div class="detail-item">
+                                <div class="detail-label">Total Locations</div>
+                                <div class="detail-value">\${device.totalLocations}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">First Seen</div>
+                                <div class="detail-value">\${device.firstSeen}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Last Seen</div>
+                                <div class="detail-value">\${device.lastSeen}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Current Location</div>
+                                <div class="detail-value">
+                                    \${device.locations[0] ? 
+                                        device.locations[0].latitude.toFixed(6) + ', ' + device.locations[0].longitude.toFixed(6) : 
+                                        'Unknown'}
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Last City</div>
+                                <div class="detail-value">
+                                    \${device.locations[0]?.city || 'Unknown'}
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Last Country</div>
+                                <div class="detail-value">
+                                    \${device.locations[0]?.country || 'Unknown'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <h3 style="margin: 20px 0 10px 0; color: #333;">Recent Locations</h3>
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            \${device.locations.map(loc => \`
+                                <div class="location-item" style="border: 1px solid #f0f0f0; margin: 5px 0; padding: 10px; border-radius: 5px;">
+                                    <div>
+                                        <strong>\${loc.latitude.toFixed(6)}, \${loc.longitude.toFixed(6)}</strong>
+                                        <div style="font-size: 12px; color: #666;">
+                                            Accuracy: \${loc.accuracy ? loc.accuracy.toFixed(0) + 'm' : 'N/A'} | 
+                                            Speed: \${loc.speed ? loc.speed.toFixed(1) + 'm/s' : 'N/A'} |
+                                            Altitude: \${loc.altitude ? loc.altitude.toFixed(0) + 'm' : 'N/A'}
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="color: #666; font-size: 12px;">\${loc.formattedTime}</div>
+                                        <div style="font-size: 12px; color: #999;">
+                                            \${loc.city ? loc.city + ', ' : ''}\${loc.country || ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            \`).join('')}
+                        </div>
+                        
+                        <div class="map-container" id="deviceMap"></div>
+                    \`;
+                    
+                    // Initialize map for device
+                    if (device.locations.length > 0 && device.locations[0].latitude && device.locations[0].longitude) {
+                        setTimeout(() => {
+                            const map = L.map('deviceMap').setView(
+                                [device.locations[0].latitude, device.locations[0].longitude], 
+                                13
+                            );
+                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                attribution: '© OpenStreetMap contributors'
+                            }).addTo(map);
+                            
+                            // Add markers for all locations
+                            device.locations.forEach(loc => {
+                                L.marker([loc.latitude, loc.longitude])
+                                    .addTo(map)
+                                    .bindPopup(\`
+                                        <b>\${loc.formattedTime}</b><br>
+                                        Lat: \${loc.latitude.toFixed(6)}<br>
+                                        Lng: \${loc.longitude.toFixed(6)}<br>
+                                        \${loc.city ? 'City: ' + loc.city + '<br>' : ''}
+                                        \${loc.accuracy ? 'Accuracy: ' + loc.accuracy.toFixed(0) + 'm' : ''}
+                                    \`);
+                            });
+                        }, 100);
+                    }
+                    
+                    modal.style.display = 'flex';
                 }
             } catch (error) {
-                document.getElementById('status').textContent = \`Error: \${error.message}\`;
-                console.error('API error:', error);
+                console.error('Error loading device:', error);
+                alert('Failed to load device details');
             }
         }
         
-        // Check URL parameters for initial location
-        function checkUrlParams() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const lat = urlParams.get('lat');
-            const lng = urlParams.get('lng');
+        // View device on map
+        function viewOnMap(deviceName) {
+            const device = allDevices.find(d => d.deviceName === deviceName);
+            if (device && device.locations.length > 0) {
+                const lat = device.locations[0].latitude;
+                const lng = device.locations[0].longitude;
+                window.open(\`/api/location?map=true&lat=\${lat}&lng=\${lng}\`, '_blank');
+            }
+        }
+        
+        // Close modal
+        function closeModal() {
+            document.getElementById('deviceModal').style.display = 'none';
+        }
+        
+        // Refresh data
+        async function refreshData() {
+            document.querySelector('.refresh-btn').style.transform = 'rotate(180deg)';
             
-            if (lat && lng) {
-                updateLocation(parseFloat(lat), parseFloat(lng), null, { source: 'URL Parameter' });
-                document.getElementById('status').textContent = 'Location from URL parameters';
+            try {
+                const response = await fetch('/api/location?view=all');
+                const data = await response.json();
+                
+                if (data.success) {
+                    allDevices = data.devices;
+                    location.reload();
+                }
+            } catch (error) {
+                console.error('Refresh failed:', error);
+                document.querySelector('.refresh-btn').style.transform = 'rotate(0)';
             }
         }
         
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            initMap();
-            checkUrlParams();
-        });
+        // Auto-refresh every 30 seconds
+        setInterval(refreshData, 30000);
+        
+        // Update time display
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('updateTime').textContent = 
+                now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+        setInterval(updateTime, 60000);
+        updateTime();
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('deviceModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        };
     </script>
 </body>
 </html>
